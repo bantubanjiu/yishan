@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, stat } from "node:fs/promises";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { loadConfig } from "../src/host/config.ts";
 import { formatCaptureEntry } from "../src/host/markdown.ts";
-import { handleHostRequest } from "../src/host/host-request.ts";
+import { assertHostRequest, handleHostRequest } from "../src/host/host-request.ts";
 import { normalizeSelectionRect } from "../extension/screenshot-crop.js";
 import { decodeNativeMessages, encodeNativeMessage } from "../src/host/native-protocol.ts";
-import { buildAppendText, writeCaptureToVault } from "../src/host/vault-writer.ts";
+import { buildAppendText, buildUpdatedNoteContent, writeCaptureToVault } from "../src/host/vault-writer.ts";
 
 const tests = [];
 
@@ -176,7 +177,7 @@ test("creates the daily inbox note when it does not exist", async () => {
   );
 
   assert.equal(result.notePath, path.join(vaultPath, "Inbox", "2026-04-29.md"));
-  assert.equal(await readFile(result.notePath, "utf8"), "- 08:00 [Example](https://example.com)\n\n");
+  assert.equal(await readFile(result.notePath, "utf8"), "## Example\n来源：https://example.com\n\n- 08:00 保存链接\n\n");
 });
 
 test("appends to an existing daily inbox note without overwriting prior captures", async () => {
@@ -210,7 +211,80 @@ test("appends to an existing daily inbox note without overwriting prior captures
   const content = await readFile(path.join(vaultPath, "Inbox", "2026-04-29.md"), "utf8");
   assert.equal(
     content,
-    "- 08:00 [First](https://example.com/1)\n\n- 08:01 [Second](https://example.com/2)\n\n```text\nuseful note\n```\n\n"
+    "## First\n来源：https://example.com/1\n\n- 08:00 保存链接\n\n## Second\n来源：https://example.com/2\n\n- 08:01 摘录\n\n```text\nuseful note\n```\n\n"
+  );
+});
+
+test("groups same-day captures from the same page URL under one source heading", async () => {
+  const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
+  const config = {
+    vaultPath,
+    inboxDir: "Inbox",
+    attachmentsDir: "Inbox/attachments"
+  };
+
+  await writeCaptureToVault(
+    {
+      type: "url",
+      title: "Example [Docs]",
+      pageUrl: "https://example.com/docs",
+      capturedAt: "2026-04-29T08:00:00.000Z"
+    },
+    config
+  );
+  await writeCaptureToVault(
+    {
+      type: "selection",
+      title: "Renamed Tab",
+      pageUrl: "https://example.com/docs",
+      text: "same page excerpt",
+      capturedAt: "2026-04-29T08:05:00.000Z"
+    },
+    config
+  );
+
+  const content = await readFile(path.join(vaultPath, "Inbox", "2026-04-29.md"), "utf8");
+  assert.equal(
+    content,
+    "## Example \\[Docs\\]\n来源：https://example.com/docs\n\n- 08:00 保存链接\n\n- 08:05 摘录\n\n```text\nsame page excerpt\n```\n\n"
+  );
+  assert.equal(content.match(/^## /gm)?.length, 1);
+});
+
+test("keeps captures from the same URL on different UTC dates in separate daily notes", async () => {
+  const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
+  const config = {
+    vaultPath,
+    inboxDir: "Inbox",
+    attachmentsDir: "Inbox/attachments"
+  };
+
+  await writeCaptureToVault(
+    {
+      type: "url",
+      title: "Example",
+      pageUrl: "https://example.com/docs",
+      capturedAt: "2026-04-29T23:59:00.000Z"
+    },
+    config
+  );
+  await writeCaptureToVault(
+    {
+      type: "url",
+      title: "Example",
+      pageUrl: "https://example.com/docs",
+      capturedAt: "2026-04-30T00:01:00.000Z"
+    },
+    config
+  );
+
+  assert.equal(
+    await readFile(path.join(vaultPath, "Inbox", "2026-04-29.md"), "utf8"),
+    "## Example\n来源：https://example.com/docs\n\n- 23:59 保存链接\n\n"
+  );
+  assert.equal(
+    await readFile(path.join(vaultPath, "Inbox", "2026-04-30.md"), "utf8"),
+    "## Example\n来源：https://example.com/docs\n\n- 00:01 保存链接\n\n"
   );
 });
 
@@ -218,6 +292,22 @@ test("closes an unclosed fenced code block before appending a new capture", () =
   assert.equal(
     buildAppendText("manual paste\n```*\nnot closed", "- 08:05 [Shot](https://example.com)\n  ![[shot.png]]\n"),
     "\n\n```\n\n- 08:05 [Shot](https://example.com)\n  ![[shot.png]]\n\n"
+  );
+});
+
+test("closes an unclosed manual fenced block before creating a new grouped source", () => {
+  assert.equal(
+    buildUpdatedNoteContent(
+      "manual paste\n```*\nnot closed",
+      {
+        type: "url",
+        title: "Example",
+        pageUrl: "https://example.com",
+        capturedAt: "2026-04-29T08:00:00.000Z"
+      },
+      "- 08:00 保存链接\n"
+    ),
+    "manual paste\n```*\nnot closed\n\n```\n\n## Example\n来源：https://example.com\n\n- 08:00 保存链接\n\n"
   );
 });
 
@@ -249,6 +339,27 @@ test("decodes data URL images into attachments for screenshot captures", async (
   assert.match(result.attachmentName ?? "", /^20260429-080400-[a-f0-9]{8}\.png$/);
   const attachmentPath = path.join(vaultPath, "Inbox", "attachments", result.attachmentName ?? "");
   assert.deepEqual(new Uint8Array(await readFile(attachmentPath)), new Uint8Array([1, 2, 3]));
+});
+
+test("loads older config files with the default selection modifier", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "clipper-config-"));
+  const configPath = path.join(tempDir, "config.json");
+  await writeFile(
+    configPath,
+    JSON.stringify({
+      vaultPath: path.join(tempDir, "vault"),
+      inboxDir: "Inbox",
+      attachmentsDir: "Inbox/attachments"
+    }),
+    "utf8"
+  );
+
+  assert.deepEqual(await loadConfig(configPath), {
+    vaultPath: path.join(tempDir, "vault"),
+    inboxDir: "Inbox",
+    attachmentsDir: "Inbox/attachments",
+    selectionModifier: "Alt"
+  });
 });
 
 test("normalizes drag screenshot selection into viewport-clamped bitmap coordinates", () => {
@@ -367,7 +478,46 @@ test("host request handler can save and read configuration", async () => {
   };
 
   assert.deepEqual(await handleHostRequest({ type: "set-config", config }, configPath), { ok: true });
-  assert.deepEqual(await handleHostRequest({ type: "get-config" }, configPath), { ok: true, config });
+  assert.deepEqual(await handleHostRequest({ type: "get-config" }, configPath), {
+    ok: true,
+    config: { ...config, selectionModifier: "Alt" }
+  });
+});
+
+test("accepts pick-folder native requests", () => {
+  assert.deepEqual(assertHostRequest({ type: "pick-folder", initialPath: "C:\\Vault" }), {
+    type: "pick-folder",
+    initialPath: "C:\\Vault"
+  });
+});
+
+test("host request handler returns selected folder from injected picker", async () => {
+  assert.deepEqual(
+    await handleHostRequest(
+      { type: "pick-folder", initialPath: "C:\\Vault" },
+      undefined,
+      {
+        pickFolder: async (initialPath) => {
+          assert.equal(initialPath, "C:\\Vault");
+          return "D:\\Notes";
+        }
+      }
+    ),
+    { ok: true, path: "D:\\Notes" }
+  );
+});
+
+test("host request handler returns the localized cancel error when folder picking is cancelled", async () => {
+  assert.deepEqual(
+    await handleHostRequest(
+      { type: "pick-folder" },
+      undefined,
+      {
+        pickFolder: async () => undefined
+      }
+    ),
+    { ok: false, error: "用户取消选择文件夹" }
+  );
 });
 
 test("native host install defaults to running host code from the repository", async () => {
@@ -383,6 +533,24 @@ test("native host install only copies host files for explicit snapshot installs"
 
   assert.doesNotMatch(script, /Copy-Item -Recurse -Force -Path \(Join-Path \$repoRoot "src\\host\\\*"\) -Destination \$hostInstallDir/);
   assert.match(script, /if \(\$Snapshot\)[\s\S]*Copy-Item -Recurse -Force/);
+});
+
+test("extension manifest exposes popup and keyboard commands", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../extension/manifest.json", import.meta.url), "utf8"));
+
+  assert.equal(manifest.action.default_popup, "popup.html");
+  assert.deepEqual(manifest.host_permissions, ["http://*/*", "https://*/*", "file:///*"]);
+  assert.equal(manifest.commands["quick-save-current-window"].suggested_key.default, "Alt+Shift+S");
+  assert.equal(manifest.commands["capture-screenshot-area"].suggested_key.default, "Alt+Shift+X");
+});
+
+test("extension background uses persisted selectionModifier for gesture injection", async () => {
+  const background = await readFile(new URL("../extension/background.js", import.meta.url), "utf8");
+
+  assert.match(background, /selectionModifier:\s*"Alt"/);
+  assert.match(background, /normalizeSelectionModifier\(config\.selectionModifier \|\| config\.gestureModifier\)/);
+  assert.match(background, /modifier:\s*gestureConfig\.selectionModifier/);
+  assert.doesNotMatch(background, /modifier:\s*DEFAULT_SETTINGS\.gestureModifier/);
 });
 
 let failed = 0;

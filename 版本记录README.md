@@ -14,7 +14,7 @@
 
 说明：
 
-- `v0.1.2` 是当前代码中可见的正式版本号。
+- `v0.2.0` 是当前代码中可见的正式版本号。
 - `H0.x` 是为了方便回看而整理的“历史迭代记录”，不是正式发布 tag。
 - 历史时间按当前工作区显示的本地时间（Asia/Shanghai）整理；日志原始时间为 UTC。
 - 涉及个人本机路径的配置只记录能力和行为，不在版本记录中展开具体私有路径。
@@ -42,6 +42,39 @@
 ---
 
 ## 当前正式版本
+
+## v0.2.0 - 2026-05-06
+
+### 更新内容
+- 插件图标左键改为打开 Popup，新 UI 支持保存当前页、保存当前窗口全部普通标签、框选截图、修改保存路径和修改选区触发键。
+- 新增当前窗口多标签快速保存，默认保存 `http/https/file` 普通标签并跳过浏览器内部页。
+- 新增快捷键：`Alt+Shift+S` 保存当前窗口标签，`Alt+Shift+X` 进入框选截图；用户可在 Chrome 快捷键设置中自定义。
+- 新增长按 Alt 后拖选文本自动保存，触发键可改为 Ctrl/Shift/Meta。
+- 支持 `file://` 本地页面/阅读器链接保存；Chrome PDF 阅读器先保存文件链接，正文选区抽取仍受浏览器限制。
+- 同一天同一链接的 URL、文本、图片和截图会写入同一个来源分组，不再重复新起条目。
+- 修改 Vault 路径时可通过 Native Host 弹出系统文件夹选择器，不必手动输入完整路径。
+
+### 实现方式
+- `extension/manifest.json` 增加 `action.default_popup`、`commands` 和 `file://` host permission。
+- `extension/background.js` 增加 Popup runtime message 分发、当前窗口批量保存、快捷键处理和 Alt 拖选内容脚本动态注入。
+- 新增 `extension/popup.html/css/js`，并同步升级 `options.html/css/js` 的路径选择和选区触发键配置。
+- `src/host/config.ts` 为旧配置补默认 `selectionModifier: "Alt"`。
+- `src/host/host-request.ts` 增加 `pick-folder` 请求，Windows 下通过 PowerShell/.NET FolderBrowserDialog 选择目录。
+- `src/host/vault-writer.ts` 和 `src/host/markdown.ts` 改为按当天日记内 `## 标题` + `来源：URL` 分组追加。
+- `tests/run-tests.mjs` 增加同源分组、旧配置默认值、文件夹选择请求、manifest/popup/快捷键集成检查。
+
+### 验证方式
+- `node --check extension\background.js`
+- `node --check extension\popup.js`
+- `node --check extension\options.js`
+- `node tests\run-tests.mjs`
+- `npm.cmd run check`
+- `node --test tests\markdown.test.ts tests\vault-writer.test.ts`（需在允许子进程派生的环境中执行）
+
+### 已知限制
+- 保存 `file://` 页面需要用户在浏览器扩展详情页开启“允许访问文件网址”。
+- Chrome PDF 阅读器正文文本抽取能力有限，当前版本优先保证保存 PDF 文件链接。
+- 快捷键实际冲突/重绑定由 Chrome 的 `chrome://extensions/shortcuts` 管理。
 
 ## v0.1.2 - 2026-05-06
 
@@ -228,6 +261,7 @@ npm run check
 | H0.10 | 2026-04-30 14:03 | 文本代码块写入 | 保存选中文本改为代码块格式，包含 fence 自适应测试 |
 | v0.1.1 | 2026-05-06 | 自动代码块语言 | 保存选中文本时自动适配代码块语言，继续安全插入 fenced code block |
 | v0.1.2 | 2026-05-06 | Native Host 源码联动 | 默认让 Native Host 直接运行当前仓库 Host 源码，避免安装目录旧拷贝滞后 |
+| v0.2.0 | 2026-05-06 | 快捷采集主线升级 | Popup、多标签保存、快捷键、Alt 拖选、同源分组与文件夹选择 |
 
 ---
 

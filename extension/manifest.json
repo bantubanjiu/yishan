@@ -1,10 +1,39 @@
 {
   "manifest_version": 3,
   "name": "移山",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "快速把网页内容、链接、图片和截图保存到 Obsidian。",
-  "permissions": ["contextMenus", "nativeMessaging", "notifications", "activeTab", "scripting", "tabs"],
+  "permissions": [
+    "contextMenus",
+    "nativeMessaging",
+    "notifications",
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*",
+    "file:///*"
+  ],
   "options_page": "options.html",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "commands": {
+    "quick-save-current-window": {
+      "suggested_key": {
+        "default": "Alt+Shift+S"
+      },
+      "description": "Quick save current window tabs to Obsidian"
+    },
+    "capture-screenshot-area": {
+      "suggested_key": {
+        "default": "Alt+Shift+X"
+      },
+      "description": "Capture selected area to Obsidian"
+    }
+  },
   "background": {
     "service_worker": "background.js",
     "type": "module"

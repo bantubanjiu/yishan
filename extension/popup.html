@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>移山</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Obsidian Web Clipper</p>
+          <h1>移山</h1>
+          <p class="subtitle">快速收集当前页面、窗口标签与框选截图。</p>
+        </div>
+        <span class="mark" aria-hidden="true">山</span>
+      </header>
+
+      <section class="quick-actions" aria-label="快速操作">
+        <button class="primary" id="saveCurrentTab" type="button">
+          <span>保存当前页</span>
+          <small>当前标签链接</small>
+        </button>
+        <button id="saveCurrentWindow" type="button">
+          <span>保存当前窗口</span>
+          <small>全部普通标签</small>
+        </button>
+        <button id="captureScreenshot" type="button">
+          <span>框选截图</span>
+          <small>拖拽选择区域</small>
+        </button>
+      </section>
+
+      <section class="settings" aria-label="保存设置">
+        <div class="section-heading">
+          <h2>保存位置</h2>
+          <button class="ghost" id="reload" type="button">刷新</button>
+        </div>
+
+        <label class="field field-with-button">
+          <span>Vault 路径</span>
+          <div class="input-row">
+            <input id="vaultPath" autocomplete="off" placeholder="例如 D:\\Obsidian\\Vault" />
+            <button class="ghost" id="chooseVault" type="button">选择</button>
+          </div>
+        </label>
+
+        <label class="field">
+          <span>Inbox 目录</span>
+          <input id="inboxDir" autocomplete="off" placeholder="Inbox" />
+        </label>
+
+        <label class="field">
+          <span>附件目录</span>
+          <input id="attachmentsDir" autocomplete="off" placeholder="Inbox\\attachments" />
+        </label>
+
+        <label class="field">
+          <span>选区快捷键</span>
+          <select id="selectionModifier">
+            <option value="Alt">Alt</option>
+            <option value="Ctrl">Ctrl</option>
+            <option value="Shift">Shift</option>
+            <option value="Meta">Meta / Command</option>
+          </select>
+        </label>
+
+        <div class="footer-actions">
+          <button class="primary" id="saveConfig" type="button">保存设置</button>
+          <button class="link-button" id="openShortcuts" type="button">打开 Chrome 快捷键设置</button>
+        </div>
+      </section>
+
+      <p id="status" class="status" role="status" aria-live="polite">准备就绪。</p>
+    </main>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

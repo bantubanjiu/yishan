@@ -5,9 +5,9 @@
 
 **把网页里的灵感，右键静默搬进 Obsidian。**
 
-Windows + Chrome/Edge 本地网页采集器：保存 URL、选中文本、图片和框选截图到 Obsidian 当天 Inbox 日记。
+Windows + Chrome/Edge 本地网页采集器：保存 URL、选中文本、图片、框选截图和当前窗口多标签到 Obsidian 当天 Inbox 日记。
 
-[![Version](https://img.shields.io/badge/version-0.1.2-2563eb)](./版本记录README.md)
+[![Version](https://img.shields.io/badge/version-0.2.0-2563eb)](./版本记录README.md)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078d4)](#环境要求)
 [![Browser](https://img.shields.io/badge/browser-Chrome%20%2F%20Edge-22c55e)](#安装浏览器扩展)
 [![Runtime](https://img.shields.io/badge/runtime-Node.js%20%3E%3D%2024-339933)](./package.json)
@@ -35,19 +35,22 @@ Windows + Chrome/Edge 本地网页采集器：保存 URL、选中文本、图片
 
 | 能力 | 说明 |
 | --- | --- |
-| 保存页面 URL | 页面空白处右键，一键追加当前页面标题和链接。 |
-| 保存选中文本 | 选中文本后右键保存，直接插入代码块；会优先读取网页代码块语言，并自动识别 JSON/HTML/CSS/JS/TS/Python/Shell/Markdown，失败回退 `text`。 |
+| 保存页面 URL | 页面空白处右键、Popup 或快捷键，一键追加当前页面标题和链接。 |
+| 保存选中文本 | 选中文本后右键保存，或长按 Alt 后拖选自动保存；会优先读取网页代码块语言，并自动识别 JSON/HTML/CSS/JS/TS/Python/Shell/Markdown，失败回退 `text`。 |
 | 保存图片 | 图片右键保存，Native Host 下载到附件目录，并写入 Obsidian 嵌入链接。 |
-| 框选截图 | 页面右键后拖拽选择可见区域，裁剪为 PNG 附件。 |
+| 框选截图 | 右键、Popup 或快捷键触发后拖拽选择可见区域，裁剪为 PNG 附件。 |
+| 多标签快速保存 | Popup 或快捷键保存当前窗口全部普通 `http/https/file` 标签页。 |
+| 本地阅读器支持 | 支持保存 `file://` 本地页面/文本链接；Chrome PDF 阅读器可保存文件链接，选区能力受浏览器限制。 |
 | 本地静默写入 | Chrome/Edge 扩展通过 Native Messaging 调用本地 Node Host 写入 Vault。 |
-| 设置页 | 在扩展选项页配置 Vault、Inbox 和附件目录。 |
+| Popup 设置 | 左键点击插件图标打开新 UI，可保存当前页/当前窗口/截图，并配置 Vault、Inbox、附件目录和选区触发键。 |
+| 同源分组追加 | 同一天同一链接的文本、图片、截图和 URL 保存在同一个来源分组下，不重复新起条目。 |
 | 追加保护 | 写入前处理空行和未闭合代码块，降低破坏当天日记的概率。 |
 
 ## 架构图
 
 ```mermaid
 flowchart LR
-  User[用户右键菜单] --> Ext[Chrome / Edge 扩展\nManifest V3]
+  User[用户右键 / Popup / 快捷键] --> Ext[Chrome / Edge 扩展\nManifest V3]
   Ext -->|Native Messaging JSON| Host[Node Native Host]
   Host --> Config[本地配置\n%USERPROFILE%/.obsidian-web-clipper-local/config.json]
   Host --> Inbox[Obsidian Vault\nInbox/YYYY-MM-DD.md]
@@ -67,7 +70,7 @@ sequenceDiagram
   participant H as Native Host
   participant V as Obsidian Vault
 
-  U->>E: 右键选择保存 URL / 文本 / 图片 / 截图
+  U->>E: 右键 / Popup / 快捷键触发保存 URL / 文本 / 图片 / 截图 / 多标签
   E->>E: 组装采集消息
   E->>H: sendNativeMessage(message)
   H->>H: 读取配置并校验路径
@@ -75,7 +78,7 @@ sequenceDiagram
     H->>H: 下载 URL 或解码 data URL
     H->>V: 写入附件文件
   end
-  H->>V: 追加 Markdown 到当天 Inbox
+  H->>V: 按当天 + 来源 URL 分组追加 Markdown
   H-->>E: 返回写入结果
   E-->>U: 系统通知保存成功/失败
 ```
@@ -85,13 +88,19 @@ sequenceDiagram
 ### URL
 
 ```markdown
-- 08:30 [页面标题](https://example.com/article)
+## 页面标题
+来源：https://example.com/article
+
+- 08:30 保存链接
 ```
 
 ### 选中文本
 
 ````markdown
-- 08:31 [页面标题](https://example.com/article)
+## 页面标题
+来源：https://example.com/article
+
+- 08:31 摘录
 
 ```json
 {
@@ -106,7 +115,10 @@ sequenceDiagram
 ### 图片或截图
 
 ```markdown
-- 08:32 [页面标题](https://example.com/article)
+## 页面标题
+来源：https://example.com/article
+
+- 08:32 图片
   ![[20260429-083200-a1b2c3d4.png]]
   来源图片：https://example.com/image.png
 ```
@@ -118,7 +130,8 @@ sequenceDiagram
 ```text
 .
 ├─ extension/                 # Chrome/Edge 扩展
-│  ├─ background.js            # 右键菜单、采集、截图、Native Messaging
+│  ├─ background.js            # 右键菜单、Popup 消息、快捷键、批量采集、截图、Native Messaging
+│  ├─ popup.html/css/js        # 插件左键 Popup UI
 │  ├─ options.html/css/js      # 设置页
 │  ├─ screenshot-crop.js       # 截图选区坐标归一化
 │  └─ icons/                   # 扩展图标
@@ -172,6 +185,7 @@ node .\src\host\configure.ts "D:\path\to\Vault" Inbox Inbox\attachments
 3. 点击“加载已解压的扩展程序”。
 4. 选择本仓库的 `extension/` 目录。
 5. 复制扩展 ID。
+6. 如果要保存 `file://` 本地文件或本地阅读器页面，在扩展详情页开启“允许访问文件网址”。
 
 ### 4. 注册 Native Host
 
@@ -193,11 +207,14 @@ node .\src\host\configure.ts "D:\path\to\Vault" Inbox Inbox\attachments
 
 ## 使用方式
 
+- 左键点击插件图标：打开 Popup，可保存当前页、保存当前窗口全部普通标签页、框选截图、修改路径和选区触发键。
 - 页面空白处右键：保存当前页面 URL。
 - 选中文本右键：保存选中文本和来源链接，并直接插入自动适配语言的代码块。
+- 长按 Alt 后拖选文本：显示蓝色高亮框，松开鼠标后自动保存选区；触发键可在 Popup/选项页改为 Ctrl/Shift/Meta。
 - 图片上右键：下载图片并保存来源。
-- 页面右键选择“框选截图保存到 Obsidian”：拖拽选择截图大小，松开鼠标后保存。
-- 打开扩展“选项”：修改 Vault 路径、Inbox 目录和附件目录。
+- 页面右键或快捷键 `Alt+Shift+X`：框选截图并保存。
+- 快捷键 `Alt+Shift+S`：保存当前窗口全部普通 `http/https/file` 标签。快捷键可在 `chrome://extensions/shortcuts` 中自定义。
+- 修改 Vault 路径时点击“选择文件夹”，Native Host 会弹出系统文件夹选择器。
 
 ## 开发验证
 
@@ -217,7 +234,7 @@ node --check extension\background.js
 
 ## 版本记录
 
-- 当前版本：`0.1.2`
+- 当前版本：`0.2.0`
 - 详细更新历史见 [`版本记录README.md`](./版本记录README.md)。
 
 ## 路线图
@@ -225,6 +242,7 @@ node --check extension\background.js
 - [ ] 支持更多截图模式，例如整页长截图。
 - [ ] 支持本地时区日期写入，而不是 UTC 日期。
 - [ ] 增加一键打开当天 Inbox 的入口。
+- [ ] 改进 Chrome PDF 阅读器的正文文本抽取能力。
 - [ ] 增加可选的 Markdown 富文本保存模式。
 - [ ] 增加安装/诊断脚本的错误提示和自动修复。
 

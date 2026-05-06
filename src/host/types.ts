@@ -26,6 +26,7 @@ export type AppConfig = {
   vaultPath: string;
   inboxDir: string;
   attachmentsDir: string;
+  selectionModifier?: string;
 };
 
 export type HostResponse =
@@ -33,6 +34,10 @@ export type HostResponse =
       ok: true;
       notePath: string;
       attachmentName?: string;
+    }
+  | {
+      ok: true;
+      path: string;
     }
   | {
       ok: false;

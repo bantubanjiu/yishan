@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { mkdir, appendFile, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { formatCaptureEntry } from "./markdown.ts";
+import { formatCaptureGroupEntry, formatCaptureSourceHeading } from "./markdown.ts";
 import type { AppConfig, CaptureMessage } from "./types.ts";
 
 export type FetchBinaryResult = {
@@ -48,10 +48,23 @@ export async function writeCaptureToVault(
     }
   }
 
-  const entry = formatCaptureEntry(message, { attachmentName, imageError });
+  const entry = formatCaptureGroupEntry(message, { attachmentName, imageError });
   const existingContent = await readExistingFile(notePath);
-  await appendFile(notePath, buildAppendText(existingContent, entry), "utf8");
+  await writeFile(notePath, buildUpdatedNoteContent(existingContent, message, entry), "utf8");
   return { notePath, attachmentName };
+}
+
+export function buildUpdatedNoteContent(existingContent: string, message: CaptureMessage, entry: string): string {
+  const normalizedExisting = existingContent.replace(/\r\n?/g, "\n");
+  const group = findSourceGroup(normalizedExisting, message.pageUrl);
+
+  if (!group) {
+    return normalizedExisting + buildAppendText(normalizedExisting, `${formatCaptureSourceHeading(message)}${entry}`);
+  }
+
+  const beforeGroupEnd = normalizedExisting.slice(0, group.end);
+  const afterGroupEnd = normalizedExisting.slice(group.end);
+  return beforeGroupEnd + buildAppendText(beforeGroupEnd.slice(group.start), entry) + afterGroupEnd;
 }
 
 export function buildAppendText(existingContent: string, entry: string): string {
@@ -62,11 +75,32 @@ export function buildAppendText(existingContent: string, entry: string): string 
     prefix.push(normalizedExisting.endsWith("\n") ? "\n" : "\n\n");
   }
 
-  if (hasUnclosedFence(normalizedExisting)) {
-    prefix.push("```\n\n");
-  }
+  prefix.push(buildFenceClosureText(normalizedExisting));
 
   return `${prefix.join("")}${entry}\n`;
+}
+
+function buildFenceClosureText(markdown: string): string {
+  return hasUnclosedFence(markdown) ? "```\n\n" : "";
+}
+
+function findSourceGroup(markdown: string, pageUrl: string): { start: number; end: number } | undefined {
+  const headingPattern = /^## .*\n来源：(.+)$/gm;
+  for (const match of markdown.matchAll(headingPattern)) {
+    if (match[1] !== pageUrl || match.index === undefined) {
+      continue;
+    }
+
+    const start = match.index;
+    const searchFrom = start + match[0].length;
+    const nextHeadingIndex = markdown.slice(searchFrom).search(/^## /m);
+    return {
+      start,
+      end: nextHeadingIndex === -1 ? markdown.length : searchFrom + nextHeadingIndex
+    };
+  }
+
+  return undefined;
 }
 
 async function readExistingFile(filePath: string): Promise<string> {

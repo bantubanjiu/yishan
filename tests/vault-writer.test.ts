@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { writeCaptureToVault } from "../src/host/vault-writer.ts";
+import { buildUpdatedNoteContent, writeCaptureToVault } from "../src/host/vault-writer.ts";
 
 test("creates the daily inbox note when it does not exist", async () => {
   const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
@@ -24,7 +24,7 @@ test("creates the daily inbox note when it does not exist", async () => {
   );
 
   assert.equal(result.notePath, path.join(vaultPath, "Inbox", "2026-04-29.md"));
-  assert.equal(await readFile(result.notePath, "utf8"), "- 08:00 [Example](https://example.com)\n\n");
+  assert.equal(await readFile(result.notePath, "utf8"), "## Example\n来源：https://example.com\n\n- 08:00 保存链接\n\n");
 });
 
 test("appends to an existing daily inbox note without overwriting prior captures", async () => {
@@ -58,7 +58,96 @@ test("appends to an existing daily inbox note without overwriting prior captures
   const content = await readFile(path.join(vaultPath, "Inbox", "2026-04-29.md"), "utf8");
   assert.equal(
     content,
-    "- 08:00 [First](https://example.com/1)\n\n- 08:01 [Second](https://example.com/2)\n\n```text\nuseful note\n```\n\n"
+    "## First\n来源：https://example.com/1\n\n- 08:00 保存链接\n\n## Second\n来源：https://example.com/2\n\n- 08:01 摘录\n\n```text\nuseful note\n```\n\n"
+  );
+});
+
+test("groups same-day captures from the same page URL under one source heading", async () => {
+  const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
+  const config = {
+    vaultPath,
+    inboxDir: "Inbox",
+    attachmentsDir: "Inbox/attachments"
+  };
+
+  await writeCaptureToVault(
+    {
+      type: "url",
+      title: "Example [Docs]",
+      pageUrl: "https://example.com/docs",
+      capturedAt: "2026-04-29T08:00:00.000Z"
+    },
+    config
+  );
+  await writeCaptureToVault(
+    {
+      type: "selection",
+      title: "Renamed Tab",
+      pageUrl: "https://example.com/docs",
+      text: "same page excerpt",
+      capturedAt: "2026-04-29T08:05:00.000Z"
+    },
+    config
+  );
+
+  const content = await readFile(path.join(vaultPath, "Inbox", "2026-04-29.md"), "utf8");
+  assert.equal(
+    content,
+    "## Example \\[Docs\\]\n来源：https://example.com/docs\n\n- 08:00 保存链接\n\n- 08:05 摘录\n\n```text\nsame page excerpt\n```\n\n"
+  );
+  assert.equal(content.match(/^## /gm)?.length, 1);
+});
+
+test("keeps captures from the same URL on different UTC dates in separate daily notes", async () => {
+  const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
+  const config = {
+    vaultPath,
+    inboxDir: "Inbox",
+    attachmentsDir: "Inbox/attachments"
+  };
+
+  await writeCaptureToVault(
+    {
+      type: "url",
+      title: "Example",
+      pageUrl: "https://example.com/docs",
+      capturedAt: "2026-04-29T23:59:00.000Z"
+    },
+    config
+  );
+  await writeCaptureToVault(
+    {
+      type: "url",
+      title: "Example",
+      pageUrl: "https://example.com/docs",
+      capturedAt: "2026-04-30T00:01:00.000Z"
+    },
+    config
+  );
+
+  assert.equal(
+    await readFile(path.join(vaultPath, "Inbox", "2026-04-29.md"), "utf8"),
+    "## Example\n来源：https://example.com/docs\n\n- 23:59 保存链接\n\n"
+  );
+  assert.equal(
+    await readFile(path.join(vaultPath, "Inbox", "2026-04-30.md"), "utf8"),
+    "## Example\n来源：https://example.com/docs\n\n- 00:01 保存链接\n\n"
+  );
+});
+
+test("closes an unclosed manual fenced block before creating a new grouped source", () => {
+  assert.equal(
+    buildUpdatedNoteContent(
+      "manual paste\n```*\nnot closed",
+      {
+        type: "url",
+        title: "Example",
+        pageUrl: "https://example.com",
+        capturedAt: "2026-04-29T08:00:00.000Z"
+      },
+      "- 08:00 保存链接\n"
+    ),
+    "manual paste\n```*\nnot closed\n\n```\n\n## Example\n来源：https://example.com\n\n- 08:00 保存链接\n\n"
   );
 });
 

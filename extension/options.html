@@ -2,35 +2,57 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>移山设置</title>
     <link rel="stylesheet" href="options.css" />
   </head>
   <body>
-    <main>
-      <h1>移山设置</h1>
-      <p class="hint">设置内容会保存到本地 Native Host 配置文件中。</p>
+    <main class="settings-shell">
+      <header class="hero">
+        <p class="eyebrow">Obsidian Web Clipper</p>
+        <h1>移山设置</h1>
+        <p class="hint">管理保存位置与选区触发键。设置会写入本地 Native Host 配置文件。</p>
+      </header>
 
-      <label>
-        Obsidian Vault 路径
-        <input id="vaultPath" placeholder="例如 D:\obaidian\乱七八糟\乱七八糟" />
-      </label>
+      <section class="panel" aria-label="保存设置">
+        <label class="field">
+          <span>Obsidian Vault 路径</span>
+          <div class="input-row">
+            <input id="vaultPath" autocomplete="off" placeholder="例如 D:\\Obsidian\\Vault" />
+            <button id="chooseVault" type="button" class="secondary">选择文件夹</button>
+          </div>
+        </label>
 
-      <label>
-        Inbox 目录
-        <input id="inboxDir" placeholder="Inbox" />
-      </label>
+        <div class="field-grid">
+          <label class="field">
+            <span>Inbox 目录</span>
+            <input id="inboxDir" autocomplete="off" placeholder="Inbox" />
+          </label>
 
-      <label>
-        附件目录
-        <input id="attachmentsDir" placeholder="Inbox\attachments" />
-      </label>
+          <label class="field">
+            <span>附件目录</span>
+            <input id="attachmentsDir" autocomplete="off" placeholder="Inbox\\attachments" />
+          </label>
+        </div>
 
-      <div class="actions">
-        <button id="save">保存设置</button>
-        <button id="reload" type="button">读取当前设置</button>
-      </div>
+        <label class="field compact-field">
+          <span>选区快捷键</span>
+          <select id="selectionModifier">
+            <option value="Alt">Alt</option>
+            <option value="Ctrl">Ctrl</option>
+            <option value="Shift">Shift</option>
+            <option value="Meta">Meta / Command</option>
+          </select>
+        </label>
 
-      <p id="status" role="status"></p>
+        <div class="actions">
+          <button id="save" class="primary" type="button">保存设置</button>
+          <button id="reload" class="secondary" type="button">读取当前设置</button>
+          <button id="openShortcuts" class="link-button" type="button">打开 Chrome 快捷键设置</button>
+        </div>
+
+        <p id="status" role="status" aria-live="polite"></p>
+      </section>
     </main>
 
     <script type="module" src="options.js"></script>

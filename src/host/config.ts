@@ -6,18 +6,19 @@ import type { AppConfig } from "./types.ts";
 
 const APP_DIR = path.join(homedir(), ".obsidian-web-clipper-local");
 export const DEFAULT_CONFIG_PATH = path.join(APP_DIR, "config.json");
+export const DEFAULT_SELECTION_MODIFIER = "Alt";
 
 export async function loadConfig(configPath = DEFAULT_CONFIG_PATH): Promise<AppConfig> {
   const raw = await readFile(configPath, "utf8");
   const parsed = JSON.parse(raw);
   validateConfig(parsed);
-  return parsed;
+  return withConfigDefaults(parsed);
 }
 
 export async function saveConfig(config: AppConfig, configPath = DEFAULT_CONFIG_PATH): Promise<void> {
   validateConfig(config);
   await mkdir(path.dirname(configPath), { recursive: true });
-  await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+  await writeFile(configPath, `${JSON.stringify(withConfigDefaults(config), null, 2)}\n`, "utf8");
 }
 
 export function validateConfig(value: unknown): asserts value is AppConfig {
@@ -29,8 +30,21 @@ export function validateConfig(value: unknown): asserts value is AppConfig {
       throw new Error(`Config field ${key} must be a non-empty string`);
     }
   }
+  if (
+    "selectionModifier" in value &&
+    (typeof value.selectionModifier !== "string" || value.selectionModifier.trim() === "")
+  ) {
+    throw new Error("Config field selectionModifier must be a non-empty string");
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function withConfigDefaults(config: AppConfig): AppConfig {
+  return {
+    ...config,
+    selectionModifier: config.selectionModifier ?? DEFAULT_SELECTION_MODIFIER
+  };
 }

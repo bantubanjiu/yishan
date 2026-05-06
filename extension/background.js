@@ -1,6 +1,13 @@
 import { normalizeSelectionRect } from "./screenshot-crop.js";
 
 const HOST_NAME = "com.local.obsidian_web_clipper";
+const DEFAULT_SETTINGS = {
+  inboxDir: "Inbox",
+  attachmentsDir: "Inbox\\attachments",
+  selectionModifier: "Alt",
+  gestureLongPressMs: 250
+};
+const ORDINARY_TAB_PROTOCOLS = new Set(["http:", "https:", "file:"]);
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
@@ -23,19 +30,63 @@ chrome.runtime.onInstalled.addListener(() => {
     title: "框选截图保存到 Obsidian",
     contexts: ["page", "selection", "image", "editable"]
   });
+
+  void injectGestureSaverIntoOpenTabs();
+});
+
+chrome.runtime.onStartup?.addListener(() => {
+  void injectGestureSaverIntoOpenTabs();
+});
+
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  const tab = await safeGetTab(tabId);
+  await injectGestureSaver(tabId, tab);
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === "complete" || changeInfo.url) {
+    void injectGestureSaver(tabId, tab);
+  }
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   try {
     const capture = await buildCaptureMessage(info, tab);
-    const response = await sendNativeMessage(capture);
-    if (!response?.ok) {
-      throw new Error(response?.error || "Unknown native host error");
-    }
+    await saveCapture(capture);
     notify("已保存到 Obsidian");
   } catch (error) {
     notify(`保存失败：${error instanceof Error ? error.message : String(error)}`);
   }
+});
+
+chrome.commands?.onCommand.addListener(async (command) => {
+  try {
+    if (command === "capture-screenshot-area") {
+      const tab = await getActiveTab();
+      await captureAndSaveScreenshot(tab);
+      notify("截图已保存到 Obsidian");
+      return;
+    }
+
+    if (command === "quick-save-current-window") {
+      const result = await saveCurrentWindowTabs();
+      notify(formatBatchSaveNotification(result));
+    }
+  } catch (error) {
+    notify(`快捷键操作失败：${error instanceof Error ? error.message : String(error)}`);
+  }
+});
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  void handleRuntimeMessage(message, sender)
+    .then(sendResponse)
+    .catch((error) => {
+      sendResponse({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
+  return true;
 });
 
 async function buildCaptureMessage(info, tab) {
@@ -76,15 +127,262 @@ async function buildCaptureMessage(info, tab) {
   }
 
   if (info.menuItemId === "save-screenshot") {
-    const imageUrl = await captureSelectedArea(tab);
-    return {
-      type: "image",
-      ...base,
-      imageUrl
-    };
+    return buildScreenshotCapture(tab);
   }
 
   throw new Error(`Unsupported menu item: ${info.menuItemId}`);
+}
+
+async function handleRuntimeMessage(message, sender) {
+  if (!isRecord(message) || typeof message.type !== "string") {
+    return { ok: false, error: "Runtime message must include a type" };
+  }
+
+  if (message.type === "get-default-settings") {
+    return {
+      ok: true,
+      settings: { ...DEFAULT_SETTINGS }
+    };
+  }
+
+  if (message.type === "get-config") {
+    return normalizeConfigResponse(await sendNativeMessage({ type: "get-config" }));
+  }
+
+  if (message.type === "set-config") {
+    const response = await sendNativeMessage({ type: "set-config", config: normalizeConfig(message.config || {}) });
+    await injectGestureSaverIntoOpenTabs();
+    return response;
+  }
+
+  if (message.type === "pick-folder") {
+    const request = { ...message, type: "pick-folder" };
+    return sendNativeMessage(request);
+  }
+
+  if (message.type === "save-current-tab") {
+    const tab = await getActiveTab();
+    if (!isOrdinaryTab(tab)) {
+      return { ok: false, error: "当前标签页不是可保存的普通页面" };
+    }
+    const response = await saveCapture(buildUrlCapture(tab));
+    return { ok: true, response };
+  }
+
+  if (message.type === "save-current-window") {
+    return saveCurrentWindowTabs();
+  }
+
+  if (message.type === "capture-screenshot") {
+    const tab = await getActiveTab();
+    const response = await captureAndSaveScreenshot(tab);
+    return { ok: true, response };
+  }
+
+  if (message.type === "open-shortcuts") {
+    await chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
+    return { ok: true };
+  }
+
+  if (message.type === "save-selection-from-gesture") {
+    const tab = sender.tab || {};
+    const text = typeof message.text === "string" ? message.text : "";
+    const markdown = typeof message.markdown === "string" ? message.markdown : text;
+    if (!text.trim() && !markdown.trim()) {
+      return { ok: false, error: "没有检测到选中文本" };
+    }
+    const response = await saveCapture({
+      type: "selection",
+      title: tab?.title || "Untitled",
+      pageUrl: tab?.url || message.pageUrl || "",
+      text,
+      markdown,
+      codeLanguage: typeof message.codeLanguage === "string" ? message.codeLanguage || undefined : undefined,
+      capturedAt: new Date().toISOString()
+    });
+    notify("已保存选中文本到 Obsidian");
+    return { ok: true, response };
+  }
+
+  return { ok: false, error: `Unsupported runtime message: ${message.type}` };
+}
+
+async function saveCapture(capture) {
+  const response = await sendNativeMessage(capture);
+  if (!response?.ok) {
+    throw new Error(response?.error || "Unknown native host error");
+  }
+  return response;
+}
+
+function buildUrlCapture(tab) {
+  if (!tab?.url) {
+    throw new Error("当前标签页没有可保存的 URL");
+  }
+  return {
+    type: "url",
+    title: tab.title || "Untitled",
+    pageUrl: tab.url,
+    capturedAt: new Date().toISOString()
+  };
+}
+
+async function buildScreenshotCapture(tab) {
+  const imageUrl = await captureSelectedArea(tab);
+  return {
+    type: "image",
+    title: tab?.title || "Untitled",
+    pageUrl: tab?.url || "",
+    capturedAt: new Date().toISOString(),
+    imageUrl
+  };
+}
+
+async function captureAndSaveScreenshot(tab) {
+  return saveCapture(await buildScreenshotCapture(tab));
+}
+
+async function getActiveTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) {
+    throw new Error("没有找到当前活动标签页");
+  }
+  return tab;
+}
+
+async function saveCurrentWindowTabs() {
+  const tabs = await chrome.tabs.query({ currentWindow: true });
+  const candidates = tabs.filter(isOrdinaryTab);
+  const failures = [];
+  let saved = 0;
+
+  for (const tab of candidates) {
+    try {
+      await saveCapture(buildUrlCapture(tab));
+      saved += 1;
+    } catch (error) {
+      failures.push({
+        tabId: tab.id,
+        title: tab.title || "Untitled",
+        url: tab.url || "",
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  return {
+    ok: failures.length === 0,
+    total: tabs.length,
+    attempted: candidates.length,
+    saved,
+    skipped: tabs.length - candidates.length,
+    failed: failures.length,
+    failures
+  };
+}
+
+function formatBatchSaveNotification(result) {
+  if (result.attempted === 0) {
+    return "当前窗口没有可保存的普通标签页";
+  }
+  if (result.failed > 0) {
+    return `已保存 ${result.saved}/${result.attempted} 个标签页，失败 ${result.failed} 个`;
+  }
+  return `已保存当前窗口 ${result.saved} 个标签页到 Obsidian`;
+}
+
+function isOrdinaryTab(tab) {
+  if (!tab?.url) {
+    return false;
+  }
+  try {
+    return ORDINARY_TAB_PROTOCOLS.has(new URL(tab.url).protocol);
+  } catch {
+    return false;
+  }
+}
+
+async function injectGestureSaverIntoOpenTabs() {
+  const tabs = await chrome.tabs.query({});
+  const config = await loadGestureConfig();
+  await Promise.all(tabs.map((tab) => injectGestureSaver(tab.id, tab, config)));
+}
+
+async function injectGestureSaver(tabId, tab, config) {
+  if (!tabId || (tab && !isGestureScriptableTab(tab))) {
+    return false;
+  }
+
+  try {
+    const gestureConfig = config || await loadGestureConfig();
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: installAltDragSelectionSaver,
+      args: [{
+        modifier: gestureConfig.selectionModifier,
+        longPressMs: DEFAULT_SETTINGS.gestureLongPressMs
+      }]
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function loadGestureConfig() {
+  try {
+    const response = await sendNativeMessage({ type: "get-config" });
+    return normalizeConfig(response?.config || {});
+  } catch {
+    return normalizeConfig({});
+  }
+}
+
+function normalizeConfigResponse(response) {
+  if (!response?.ok) {
+    return response;
+  }
+  return {
+    ...response,
+    config: normalizeConfig(response.config || {})
+  };
+}
+
+function normalizeConfig(config) {
+  return {
+    ...config,
+    inboxDir: config.inboxDir || DEFAULT_SETTINGS.inboxDir,
+    attachmentsDir: config.attachmentsDir || DEFAULT_SETTINGS.attachmentsDir,
+    selectionModifier: normalizeSelectionModifier(config.selectionModifier || config.gestureModifier)
+  };
+}
+
+function normalizeSelectionModifier(value) {
+  return ["Alt", "Ctrl", "Shift", "Meta"].includes(value) ? value : DEFAULT_SETTINGS.selectionModifier;
+}
+
+async function safeGetTab(tabId) {
+  if (!tabId) {
+    return null;
+  }
+
+  try {
+    return await chrome.tabs.get(tabId);
+  } catch {
+    return null;
+  }
+}
+
+function isGestureScriptableTab(tab) {
+  if (!tab?.url) {
+    return false;
+  }
+  try {
+    const protocol = new URL(tab.url).protocol;
+    return protocol === "http:" || protocol === "https:" || protocol === "file:";
+  } catch {
+    return false;
+  }
 }
 
 async function getSelectionAsMarkdown(tabId, fallbackText = "") {
@@ -512,6 +810,232 @@ function sendNativeMessage(message) {
       resolve(response);
     });
   });
+}
+
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function installAltDragSelectionSaver(options = {}) {
+  const stateKey = "__obsidianWebClipperAltDragSelectionSaver";
+  const previous = window[stateKey];
+  if (previous?.cleanup) {
+    previous.cleanup();
+  }
+
+  const modifier = options.modifier || "Alt";
+  const longPressMs = Number(options.longPressMs) > 0 ? Number(options.longPressMs) : 250;
+  const dragThreshold = 6;
+  const state = {
+    modifierDown: false,
+    armed: false,
+    dragging: false,
+    cancelled: false,
+    start: null,
+    timer: 0,
+    overlay: null,
+    box: null
+  };
+
+  function isModifierEvent(event) {
+    if (modifier === "Alt") {
+      return event.key === "Alt" || event.altKey;
+    }
+    if (modifier === "Shift") {
+      return event.key === "Shift" || event.shiftKey;
+    }
+    if (modifier === "Control" || modifier === "Ctrl") {
+      return event.key === "Control" || event.ctrlKey;
+    }
+    if (modifier === "Meta") {
+      return event.key === "Meta" || event.metaKey;
+    }
+    return event.key === modifier;
+  }
+
+  function onKeyDown(event) {
+    if (event.key === "Escape") {
+      cancelGesture();
+      return;
+    }
+    if (event.repeat || !isModifierEvent(event) || state.modifierDown) {
+      return;
+    }
+
+    state.modifierDown = true;
+    state.cancelled = false;
+    state.timer = window.setTimeout(() => {
+      if (state.modifierDown && !state.cancelled) {
+        state.armed = true;
+      }
+    }, longPressMs);
+  }
+
+  function onKeyUp(event) {
+    if (!isModifierEvent(event)) {
+      return;
+    }
+    state.modifierDown = false;
+    if (!state.dragging) {
+      cancelGesture();
+    }
+  }
+
+  function onMouseDown(event) {
+    if (!state.armed || event.button !== 0 || isEditableTarget(event.target)) {
+      return;
+    }
+    state.start = { x: event.clientX, y: event.clientY };
+    state.dragging = false;
+  }
+
+  function onMouseMove(event) {
+    if (!state.armed || !state.start || isEditableTarget(event.target)) {
+      return;
+    }
+
+    const distance = Math.hypot(event.clientX - state.start.x, event.clientY - state.start.y);
+    if (distance < dragThreshold && !state.dragging) {
+      return;
+    }
+
+    state.dragging = true;
+    ensureOverlay();
+    drawBox(state.start, { x: event.clientX, y: event.clientY });
+  }
+
+  function onMouseUp() {
+    if (!state.armed || !state.start) {
+      return;
+    }
+
+    const shouldSave = state.dragging;
+    const selection = window.getSelection();
+    const text = selection?.toString() || "";
+    const markdown = normalizeSelectionText(text);
+    window.clearTimeout(state.timer);
+    state.overlay?.remove();
+    state.overlay = null;
+    state.box = null;
+
+    if (!shouldSave || !markdown.trim()) {
+      resetGestureState();
+      return;
+    }
+
+    chrome.runtime.sendMessage({
+      type: "save-selection-from-gesture",
+      text,
+      markdown,
+      pageUrl: location.href
+    }, () => {
+      void chrome.runtime.lastError;
+    });
+    resetGestureState();
+  }
+
+  function ensureOverlay() {
+    if (state.overlay && state.box) {
+      return;
+    }
+
+    const overlay = document.createElement("div");
+    const box = document.createElement("div");
+    Object.assign(overlay.style, {
+      position: "fixed",
+      inset: "0",
+      zIndex: "2147483646",
+      pointerEvents: "none",
+      background: "transparent"
+    });
+    Object.assign(box.style, {
+      position: "fixed",
+      display: "none",
+      border: "1px solid rgba(37, 99, 235, 0.95)",
+      background: "rgba(59, 130, 246, 0.13)",
+      boxShadow: "0 0 0 1px rgba(255, 255, 255, 0.7) inset",
+      borderRadius: "2px"
+    });
+    overlay.appendChild(box);
+    document.documentElement.appendChild(overlay);
+    state.overlay = overlay;
+    state.box = box;
+  }
+
+  function drawBox(start, end) {
+    if (!state.box) {
+      return;
+    }
+
+    const left = Math.min(start.x, end.x);
+    const top = Math.min(start.y, end.y);
+    const width = Math.abs(end.x - start.x);
+    const height = Math.abs(end.y - start.y);
+    Object.assign(state.box.style, {
+      display: "block",
+      left: `${left}px`,
+      top: `${top}px`,
+      width: `${width}px`,
+      height: `${height}px`
+    });
+  }
+
+  function cancelGesture() {
+    window.clearTimeout(state.timer);
+    resetGestureState();
+    state.cancelled = true;
+    state.overlay?.remove();
+    state.overlay = null;
+    state.box = null;
+  }
+
+  function resetGestureState() {
+    state.modifierDown = false;
+    state.armed = false;
+    state.dragging = false;
+    state.start = null;
+  }
+
+  function cleanup() {
+    cancelGesture();
+    window.removeEventListener("keydown", onKeyDown, true);
+    window.removeEventListener("keyup", onKeyUp, true);
+    window.removeEventListener("mousedown", onMouseDown, true);
+    window.removeEventListener("mousemove", onMouseMove, true);
+    window.removeEventListener("mouseup", onMouseUp, true);
+  }
+
+  function isEditableTarget(target) {
+    const element = target?.nodeType === Node.ELEMENT_NODE ? target : target?.parentElement;
+    if (!element) {
+      return false;
+    }
+    const editable = element.closest?.("input, textarea, select, [contenteditable=''], [contenteditable='true']");
+    if (!editable) {
+      return false;
+    }
+    if (editable.matches?.("[contenteditable='false']")) {
+      return false;
+    }
+    return true;
+  }
+
+  function normalizeSelectionText(text) {
+    return String(text || "")
+      .replace(/\r\n?/g, "\n")
+      .split("\n")
+      .map((line) => line.replace(/[ \t]+$/g, ""))
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  window.addEventListener("keydown", onKeyDown, true);
+  window.addEventListener("keyup", onKeyUp, true);
+  window.addEventListener("mousedown", onMouseDown, true);
+  window.addEventListener("mousemove", onMouseMove, true);
+  window.addEventListener("mouseup", onMouseUp, true);
+  window[stateKey] = { cleanup };
 }
 
 function notify(message) {
