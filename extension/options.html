@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>移山设置</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <h1>移山设置</h1>
+      <p class="hint">设置内容会保存到本地 Native Host 配置文件中。</p>
+
+      <label>
+        Obsidian Vault 路径
+        <input id="vaultPath" placeholder="例如 D:\obaidian\乱七八糟\乱七八糟" />
+      </label>
+
+      <label>
+        Inbox 目录
+        <input id="inboxDir" placeholder="Inbox" />
+      </label>
+
+      <label>
+        附件目录
+        <input id="attachmentsDir" placeholder="Inbox\attachments" />
+      </label>
+
+      <div class="actions">
+        <button id="save">保存设置</button>
+        <button id="reload" type="button">读取当前设置</button>
+      </div>
+
+      <p id="status" role="status"></p>
+    </main>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

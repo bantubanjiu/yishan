@@ -1,0 +1,431 @@
+# 版本记录 README
+
+本文档用于记录“移山”项目每个版本更新了什么、为什么这样做，以及核心实现方式。后续每次发布或重要改动后，都建议在这里追加一条记录。
+
+## 追溯依据与版本命名说明
+
+当前目录未检测到 Git 仓库，因此历史版本不是从 Git tag / commit 自动生成的，而是根据以下线索人工还原：
+
+- `.omx/logs/turns-2026-04-29.jsonl`
+- `.omx/logs/turns-2026-04-30.jsonl`
+- 文件创建/修改时间
+- 当前代码快照
+- `package.json` 与 `extension/manifest.json` 中的版本号
+
+说明：
+
+- `v0.1.0` 是当前代码中可见的正式版本号。
+- `H0.x` 是为了方便回看而整理的“历史迭代记录”，不是正式发布 tag。
+- 历史时间按当前工作区显示的本地时间（Asia/Shanghai）整理；日志原始时间为 UTC。
+- 涉及个人本机路径的配置只记录能力和行为，不在版本记录中展开具体私有路径。
+
+## 记录模板
+
+```markdown
+## vX.Y.Z - YYYY-MM-DD
+
+### 更新内容
+- 用户可感知的新功能、修复或体验变化。
+
+### 实现方式
+- 关键技术路径。
+- 涉及的主要文件。
+- 重要设计取舍。
+
+### 验证方式
+- 执行过的测试、检查或手工验证。
+
+### 已知限制
+- 暂未解决的问题、环境限制或后续计划。
+```
+
+---
+
+## 当前正式版本
+
+## v0.1.0 - 2026-04-30
+
+### 更新内容
+- 提供 Windows + Chrome/Edge 本地网页采集 MVP。
+- 支持通过浏览器右键菜单保存：
+  - 当前页面 URL。
+  - 选中文本。
+  - 页面图片。
+  - 可见页面内的框选截图。
+- 默认把采集内容追加到 Obsidian Vault 内的 `Inbox/YYYY-MM-DD.md`。
+- 图片和截图会保存为附件，并在当天日记里嵌入 Obsidian wiki 链接。
+- 选中文本按代码块格式插入，避免复制内容里的 Markdown 符号破坏日记结构。
+- 提供扩展选项页，可读取/保存 Vault 路径、Inbox 目录和附件目录。
+- 提供 Native Host 安装脚本，自动注册 Chrome 和 Edge 的 Native Messaging Host。
+- 提供项目内测试入口，规避当前环境里 `node --test` 的 `spawn EPERM` 问题。
+
+### 实现方式
+
+#### 1. 浏览器扩展层
+主要文件：
+- `extension/manifest.json`
+- `extension/background.js`
+- `extension/options.html`
+- `extension/options.css`
+- `extension/options.js`
+- `extension/screenshot-crop.js`
+
+实现要点：
+- 使用 Manifest V3 service worker 作为后台脚本。
+- 通过 `chrome.contextMenus` 注册 4 个右键菜单：保存 URL、保存选中文本、保存图片、框选截图。
+- 右键触发后由 `background.js` 统一组装采集消息，再通过 `chrome.runtime.sendNativeMessage` 发送给本地 Native Host。
+- 选中文本菜单同时支持普通网页选区和输入态/可编辑区域：`selection`、`editable`。
+- 扩展层保留了 DOM 选区转 Markdown 的辅助逻辑，后续如需恢复富格式可复用；当前主写入行为由 Native Host 按纯文本代码块保存。
+- 框选截图通过页面注入脚本显示遮罩，记录拖拽起止点；再调用 `chrome.tabs.captureVisibleTab` 获取可见区域截图，并用 canvas 按设备像素比裁剪为 PNG data URL。
+- 截图框选交互为：选区外灰色遮罩、选中区域完全透明、白色边框、Esc 取消。
+- `extension/screenshot-crop.js` 独立封装截图选区归一化，便于测试边界坐标和高 DPI 场景。
+- 选项页通过 Native Messaging 读取/写入本地配置，不直接访问文件系统。
+
+#### 2. Native Host 层
+主要文件：
+- `src/host/index.ts`
+- `src/host/native-protocol.ts`
+- `src/host/host-request.ts`
+- `src/host/config.ts`
+- `src/host/vault-writer.ts`
+- `src/host/markdown.ts`
+- `src/host/types.ts`
+
+实现要点：
+- `index.ts` 从标准输入读取 Chrome Native Messaging 数据帧，处理后把响应重新编码写回标准输出。
+- `native-protocol.ts` 实现 Native Messaging 协议所需的 4 字节小端长度头和 JSON payload 编解码。
+- `host-request.ts` 统一分发三类请求：
+  - `get-config`：读取配置。
+  - `set-config`：保存配置。
+  - `url` / `selection` / `image`：写入 Obsidian。
+- `config.ts` 把配置保存在 `%USERPROFILE%\.obsidian-web-clipper-local\config.json`，并校验 `vaultPath`、`inboxDir`、`attachmentsDir` 都是非空字符串。
+- `vault-writer.ts` 负责把采集内容写入 Vault：
+  - 校验采集消息必填字段。
+  - 防止 Inbox 和附件目录逃逸到 Vault 外部。
+  - 自动创建 Inbox 和附件目录。
+  - 根据 `capturedAt` 生成当天 Markdown 文件名。
+  - 图片支持普通 URL 和 data URL；附件名使用时间戳 + 图片 URL/时间哈希，降低重名概率。
+  - 如果图片下载失败，仍然写入当天日记，并记录失败原因，避免一次图片失败导致整条采集丢失。
+  - 追加内容前会检查已有 Markdown 是否缺少空行或存在未闭合代码块，尽量避免破坏后续日记格式。
+- `markdown.ts` 负责把不同采集类型格式化为 Obsidian 友好的 Markdown 条目：
+  - URL：一条来源链接。
+  - selection：来源链接 + `text` 代码块。
+  - image：来源链接 + 附件嵌入；截图 data URL 不再把 base64 原文写入日记。
+
+#### 3. 安装与注册层
+主要文件：
+- `scripts/install-native-host.ps1`
+
+实现要点：
+- 根据用户传入的扩展 ID 生成 Native Messaging manifest。
+- 在当前用户 HKCU 下注册 Chrome 和 Edge 的 Native Host。
+- 让浏览器扩展可以通过固定 host name `com.local.obsidian_web_clipper` 调用本地 Node 脚本。
+
+#### 4. 测试与验证层
+主要文件：
+- `tests/run-tests.mjs`
+- `tests/protocol.test.mjs`
+- `tests/markdown.test.ts`
+- `tests/vault-writer.test.ts`
+
+实现要点：
+- 使用项目自带 `tests/run-tests.mjs` 执行测试，避免依赖当前环境不可用的 `node --test` 子进程派生能力。
+- 覆盖 Native Messaging 帧编解码、Markdown 格式化、Vault 写入、附件命名、截图选区归一化等关键逻辑。
+- `package.json` 提供：
+  - `npm test`：运行项目测试。
+  - `npm run check`：先检查 `extension/background.js` 语法，再运行测试。
+
+### 验证方式
+- 项目提供的推荐验证命令：
+
+```powershell
+node tests\run-tests.mjs
+node --check extension\background.js
+```
+
+或：
+
+```powershell
+npm run check
+```
+
+### 已知限制
+- 当前记录基于现有代码快照整理；当前目录未检测到 Git 仓库，因此无法从提交历史还原更早的精确 diff。
+- 采集日期和时间目前按 `capturedAt` 的 UTC 日期/时间格式化；如果希望 Obsidian 日记严格使用本地时区，需要后续调整日期格式化逻辑。
+- 框选截图只截取当前可见页面区域，不支持自动滚动长截图。
+- 图片下载依赖 Native Host 的网络访问；如果目标站点防盗链、鉴权或网络失败，会在日记中记录失败原因。
+- Native Host 安装脚本面向 Windows + 当前用户 HKCU；其他系统或全局安装方式暂未覆盖。
+
+---
+
+## 历史迭代摘要
+
+| 记录 | 本地时间 | 主题 | 结果 |
+| --- | --- | --- | --- |
+| H0.1 | 2026-04-29 14:30-14:47 | 需求确认与 MVP 落地 | 确定“浏览器扩展 + Native Host”路线，并实现 URL/文本/图片静默保存 |
+| H0.2 | 2026-04-29 14:49-15:15 | 本机配置与 Native Host 注册 | 支持配置 Vault，并完成 Chrome/Edge Native Host 注册验证 |
+| H0.3 | 2026-04-29 15:34 | Markdown 文本与截图初版 | 增加选区 Markdown 尝试转换和截图保存能力 |
+| H0.4 | 2026-04-29 15:41 | 手动框选截图 | 从“直接全截图”改为拖拽选择截图范围 |
+| H0.5 | 2026-04-29 15:44 | 截图写入格式修复 | 截图只写附件嵌入，不再把 data URL/base64 长串写入日记 |
+| H0.6 | 2026-04-29 15:56 | 通知、遮罩、设置页 | 修复通知图标错误，截图遮罩改灰色，新增设置页 |
+| H0.7 | 2026-04-29 15:59-16:15 | 文本保存与追加稳定性 | 改善选区文本可靠性、输入态右键、未闭合代码块追加安全 |
+| H0.8 | 2026-04-29 16:13-17:24 | 截图视觉修复 | 修复截图变色、边框改白色、选中区域完全透明 |
+| H0.9 | 2026-04-29 16:58 | 品牌与图标 | 插件命名为“移山”，更换像素风图标 |
+| H0.10 | 2026-04-30 14:03 | 文本代码块写入 | 保存选中文本改为代码块格式，包含 fence 自适应测试 |
+
+---
+
+## 历史迭代明细
+
+## H0.1 - 2026-04-29 14:30-14:47 - 需求确认与 MVP 落地
+
+### 更新内容
+- 明确产品方向：做一个本地工具，把网页/应用里看到的有价值内容、链接、图片快速同步到 Obsidian。
+- 确定第一阶段范围：优先做网页采集，而不是全局桌面级采集。
+- 选择“浏览器扩展 + Node Native Host”方案。
+- 实现第一版 MVP：
+  - 右键保存当前页面 URL。
+  - 右键保存选中文本。
+  - 右键保存图片。
+  - 静默写入 Obsidian 当天 Inbox 日记。
+
+### 实现方式
+- 浏览器扩展负责采集入口和用户动作。
+- Native Host 负责本地文件写入，避免浏览器扩展直接访问本地文件系统。
+- 通过 Chrome Native Messaging 在扩展和本地 Node 进程之间传输 JSON 消息。
+- 建立基础目录结构：
+  - `extension/`
+  - `src/host/`
+  - `scripts/`
+  - `tests/`
+- 关键文件包括：
+  - `extension/manifest.json`
+  - `extension/background.js`
+  - `src/host/index.ts`
+  - `src/host/native-protocol.ts`
+  - `src/host/vault-writer.ts`
+  - `tests/run-tests.mjs`
+
+### 验证方式
+- 创建 Native Messaging 协议测试。
+- 创建 Vault 写入和 Markdown 格式化测试。
+- 使用项目自带测试入口执行基础验证。
+
+### 设计取舍
+- 暂不做完整桌面悬浮窗/全局快捷键，先从浏览器右键菜单切入，降低权限和系统兼容复杂度。
+- 选择静默保存，减少每次采集时的弹窗确认。
+
+## H0.2 - 2026-04-29 14:49-15:15 - 本机配置与 Native Host 注册
+
+### 更新内容
+- 增加本机 Vault 路径配置能力。
+- 完成扩展 ID 对应的 Native Host 注册。
+- 支持 Chrome 和 Edge 两个浏览器读取同一个 Native Host 配置。
+
+### 实现方式
+- 通过 `src/host/config.ts` 读写 `%USERPROFILE%\.obsidian-web-clipper-local\config.json`。
+- 通过 `src/host/configure.ts` 提供命令行配置入口。
+- 通过 `scripts/install-native-host.ps1`：
+  - 生成 Native Host manifest。
+  - 写入当前用户 HKCU 注册表项。
+  - 同时覆盖 Chrome 与 Edge 的 Native Messaging Host 注册位置。
+
+### 验证方式
+- 配置读取/写入 smoke 验证。
+- Native Host manifest 与注册表路径验证。
+- 使用用户提供的扩展 ID 完成安装验证。
+
+### 设计取舍
+- 配置文件放在用户主目录应用配置目录，避免写入项目目录或浏览器扩展目录。
+- 注册使用当前用户 HKCU，避免要求管理员权限。
+
+## H0.3 - 2026-04-29 15:34 - Markdown 文本与截图初版
+
+### 更新内容
+- 尝试让选中文本以 Markdown 格式保存。
+- 新增截图保存能力。
+- 支持标题、段落、粗体、斜体、代码、链接、图片、列表、引用、代码块等常见 DOM 结构的 Markdown 转换。
+
+### 实现方式
+- `extension/background.js` 注入脚本读取当前选区 DOM。
+- 将 DOM 节点递归转换为 Markdown 字符串。
+- 截图初版使用浏览器截图能力获取可见页面图像。
+- 采集消息中开始出现 selection 的 `markdown` 字段和 image 类型截图 data URL。
+
+### 验证方式
+- 通过语法检查和项目测试验证基础逻辑。
+- 通过实际右键菜单验证保存入口。
+
+### 后续变化
+- 后来发现复杂网页（例如社交媒体站点）中 DOM 结构不一定能保留用户想要的复制格式；最终版本把选中文本改成代码块保存，DOM Markdown 逻辑保留为可复用能力。
+
+## H0.4 - 2026-04-29 15:41 - 手动框选截图
+
+### 更新内容
+- 截图从“直接截取可见页面”改成“手动拖拽选择截图区域”。
+- 页面出现截图遮罩后，用户可以自己决定截图范围。
+- 支持 Esc 取消截图。
+
+### 实现方式
+- `extension/background.js` 注入 `selectScreenshotArea` 页面脚本。
+- 页面脚本创建覆盖全屏的 overlay、选区 box、操作提示 label。
+- 监听 pointer down/move/up 记录起点和终点。
+- 使用 `normalizeSelectionRect` 将 CSS 坐标转换为 bitmap 坐标。
+- 使用 canvas 裁剪 `captureVisibleTab` 得到的整张可见截图。
+
+### 验证方式
+- 增加/保留截图选区归一化测试。
+- 手动验证拖拽选择区域、松开保存、Esc 取消。
+
+## H0.5 - 2026-04-29 15:44 - 截图写入格式修复
+
+### 更新内容
+- 修复截图保存后 Markdown 后面跟着一大串 `data:image/png;base64,...` 的问题。
+- 截图写入日记时只保留附件嵌入。
+
+### 实现方式
+- `src/host/markdown.ts` 针对 image 类型区分普通图片 URL 和截图 data URL。
+- 如果 `imageUrl` 以 `data:` 开头，只写入：
+
+```markdown
+- HH:mm [页面标题](页面URL)
+  ![[截图文件名.png]]
+```
+
+- 普通网页图片仍保留“来源图片”链接，方便追溯。
+
+### 验证方式
+- 增加/运行格式化测试：截图 data URL 不应写入来源图片长串。
+- 手动检查 Obsidian 日记写入结果。
+
+## H0.6 - 2026-04-29 15:56 - 通知、遮罩、设置页
+
+### 更新内容
+- 修复 Chrome 通知报错：`Unable to download all specified images`。
+- 截图遮罩从紫色改为灰色。
+- 选中区域视觉上更接近透明预览。
+- 新增设置页面，可配置存储路径。
+
+### 实现方式
+- 通知图标改用 PNG 图标，避免 Chrome notification API 加载 SVG 失败。
+- 增加 `extension/options.html`、`extension/options.css`、`extension/options.js`。
+- 增加 Native Host 请求类型：
+  - `get-config`
+  - `set-config`
+- `host-request.ts` 负责分发配置读写请求。
+- `manifest.json` 增加 `options_page`。
+
+### 验证方式
+- 通过设置页读取/保存配置 smoke 验证。
+- 通过 Chrome/Edge 右键保存后观察通知是否正常出现。
+
+### 设计取舍
+- 设置页仍通过 Native Messaging 操作配置，不让扩展直接接触本地文件系统。
+
+## H0.7 - 2026-04-29 15:59-16:15 - 文本保存与追加稳定性
+
+### 更新内容
+- 修复部分网页“保存文本没格式/不稳定”的问题。
+- 修复输入框、textarea、可编辑区域里右键无法唤醒保存文本菜单的问题。
+- 修复手动粘贴内容里存在未闭合代码块后，后续截图无法在 Obsidian 预览的问题。
+
+### 实现方式
+- `extension/background.js`：
+  - `save-selection` 菜单增加 `editable` context。
+  - 如果焦点在 `input` / `textarea` / `contenteditable`，优先读取编辑区域选中文本。
+  - 在 DOM Markdown 和纯文本之间做选择，避免复杂网页把换行/列表压成一行。
+- `src/host/vault-writer.ts`：
+  - 追加新内容前读取已有日记。
+  - 如果已有内容末尾没有足够空行，自动补空行。
+  - 如果检测到未闭合 Markdown fence，先补一个关闭 fence，再追加新采集内容。
+
+### 验证方式
+- 增加/运行追加文本相关测试：
+  - 不覆盖已有日记。
+  - 自动分隔缺少换行的旧内容。
+  - 未闭合代码块时先补闭合 fence。
+- 手动验证输入态右键菜单可见。
+
+### 设计取舍
+- 不主动修改用户整篇 Obsidian 日记，只在追加点前做最小补救，降低误改用户笔记的风险。
+
+## H0.8 - 2026-04-29 16:13-17:24 - 截图视觉修复
+
+### 更新内容
+- 修复截出来的图发灰/变色的问题。
+- 手动截图边框改为白色。
+- 框选预览最终调整为：
+  - 选区外：灰色遮罩。
+  - 选中区域：完全透明。
+  - 选区边框：白色。
+
+### 实现方式
+- 截图完成时先移除 overlay，再等待两帧 `requestAnimationFrame`，确保页面完成重绘后再截图。
+- 裁剪 canvas 时设置 `imageSmoothingEnabled = false`，减少图像二次处理带来的视觉变化。
+- overlay 本身不再使用整页半透明背景覆盖选中区域，而是通过 box 的大范围阴影制造选区外遮罩。
+
+### 验证方式
+- `node --check extension\background.js`
+- 手动截图验证：截图结果不应包含灰色蒙层，选区预览不应覆盖截图区域。
+
+## H0.9 - 2026-04-29 16:58 - 品牌与图标
+
+### 更新内容
+- 插件名称改为“移山”。
+- 通知标题改为“移山”。
+- 设置页标题改为“移山设置”。
+- 更换为像素风图标。
+
+### 实现方式
+- 修改 `extension/manifest.json` 的 `name` 与 `description`。
+- 修改 `extension/background.js` 通知标题。
+- 修改 `extension/options.html` 设置页标题。
+- 新增/替换图标资源：
+  - `extension/icons/yishan-source.png`
+  - `extension/icons/icon16.png`
+  - `extension/icons/icon48.png`
+  - `extension/icons/icon128.png`
+
+### 验证方式
+- 重新加载扩展后检查扩展名、设置页标题、通知标题、图标展示。
+- 检查 manifest 语法和图标路径。
+
+## H0.10 - 2026-04-30 14:03 - 文本代码块写入
+
+### 更新内容
+- 根据使用反馈，将“保存选中文本”调整为代码块插入格式。
+- 选中文本中如果本身包含 ```，会自动使用更长的 fence，避免代码块提前闭合。
+
+### 实现方式
+- `src/host/markdown.ts` 中 selection 类型改为：来源链接 + fenced code block。
+- `formatFencedCodeBlock` 会扫描文本中最长连续反引号数量，并生成更长的围栏。
+- `tests/markdown.test.ts` 增加对应测试。
+- `tests/run-tests.mjs` 更新测试集合。
+
+### 写入格式
+
+````markdown
+- HH:mm [页面标题](页面URL)
+
+```text
+选中的文本内容
+```
+````
+
+### 验证方式
+- 运行项目测试，确认：
+  - 选中文本按代码块写入。
+  - 内含反引号的文本不会破坏代码块。
+
+### 设计取舍
+- 牺牲一部分富 Markdown 还原能力，换取更稳定、可预测、不破坏 Obsidian 日记结构的保存结果。
+
+---
+
+## 后续维护建议
+
+- 每次修改 `package.json` 或 `extension/manifest.json` 的版本号时，同步在本文档新增正式版本条目。
+- 每条版本记录至少写清楚：更新内容、实现方式、验证方式、已知限制。
+- 如果只是内部重构，也建议记录“为什么改”和“行为是否保持不变”，避免后续重复排查。
+- 如果新增用户可见能力，优先把入口、使用方法和关键文件一起写入记录。
+- 如果以后初始化 Git 仓库，建议把上面的 `H0.x` 历史迭代与真实 commit/tag 对齐；对不确定的内容保留“根据日志还原”的标注。
