@@ -14,7 +14,7 @@
 
 说明：
 
-- `v0.1.1` 是当前代码中可见的正式版本号。
+- `v0.1.2` 是当前代码中可见的正式版本号。
 - `H0.x` 是为了方便回看而整理的“历史迭代记录”，不是正式发布 tag。
 - 历史时间按当前工作区显示的本地时间（Asia/Shanghai）整理；日志原始时间为 UTC。
 - 涉及个人本机路径的配置只记录能力和行为，不在版本记录中展开具体私有路径。
@@ -42,6 +42,32 @@
 ---
 
 ## 当前正式版本
+
+## v0.1.2 - 2026-05-06
+
+### 更新内容
+- Native Host 安装方式改为默认“源代码联动模式”。
+- 以后更新仓库里的 Host 代码后，只要仓库路径不变，浏览器启动 Native Host 时会直接使用当前仓库最新 `src/host` 逻辑，避免安装目录里的旧拷贝滞后。
+- 保留 `-Snapshot` 可选模式：需要脱离仓库固定运行安装时快照时，可以显式复制 Host 文件到 `%LOCALAPPDATA%\ObsidianWebClipperLocal\host`。
+
+### 实现方式
+- `scripts/install-native-host.ps1` 新增 `-Snapshot` switch。
+- 默认安装时：
+  - launcher 仍放在 `%LOCALAPPDATA%\ObsidianWebClipperLocal\native-host.exe`。
+  - launcher 内部执行的脚本路径从安装目录改为当前仓库的 `src\host\handle-json-file.ts`。
+  - 不再无条件 `Copy-Item` Host 源码到安装目录。
+- 显式使用 `-Snapshot` 时才复制 `src\host` 到安装目录，并让 launcher 指向安装目录快照。
+- `tests/run-tests.mjs` 增加安装脚本行为检查，防止以后误改回无条件复制模式。
+
+### 验证方式
+- `node tests\run-tests.mjs`
+- `node --check extension\background.js`
+- `npm.cmd run check`
+- 重新执行安装脚本并检查生成的 launcher 源码，确认指向 `D:\乱七八糟\vibe\src\host\handle-json-file.ts`。
+
+### 已知限制
+- 源代码联动模式依赖仓库路径稳定；如果移动仓库目录，需要重新执行安装脚本。
+- 如果换了 Node.js 安装路径或扩展 ID，也需要重新执行安装脚本。
 
 ## v0.1.1 - 2026-05-06
 
@@ -201,6 +227,7 @@ npm run check
 | H0.9 | 2026-04-29 16:58 | 品牌与图标 | 插件命名为“移山”，更换像素风图标 |
 | H0.10 | 2026-04-30 14:03 | 文本代码块写入 | 保存选中文本改为代码块格式，包含 fence 自适应测试 |
 | v0.1.1 | 2026-05-06 | 自动代码块语言 | 保存选中文本时自动适配代码块语言，继续安全插入 fenced code block |
+| v0.1.2 | 2026-05-06 | Native Host 源码联动 | 默认让 Native Host 直接运行当前仓库 Host 源码，避免安装目录旧拷贝滞后 |
 
 ---
 

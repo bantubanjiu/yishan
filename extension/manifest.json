@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "移山",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "快速把网页内容、链接、图片和截图保存到 Obsidian。",
   "permissions": ["contextMenus", "nativeMessaging", "notifications", "activeTab", "scripting", "tabs"],
   "options_page": "options.html",

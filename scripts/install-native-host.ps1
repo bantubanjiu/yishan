@@ -1,20 +1,26 @@
 param(
   [Parameter(Mandatory = $true)]
-  [string]$ExtensionId
+  [string]$ExtensionId,
+
+  [switch]$Snapshot
 )
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repoHostDir = Join-Path $repoRoot "src\host"
 $nodePath = (Get-Command node).Source
 $manifestDir = Join-Path $env:LOCALAPPDATA "ObsidianWebClipperLocal"
 $hostInstallDir = Join-Path $manifestDir "host"
+$activeHostDir = if ($Snapshot) { $hostInstallDir } else { $repoHostDir }
 $launcherSourcePath = Join-Path $manifestDir "NativeHostLauncher.cs"
 $launcherPath = Join-Path $manifestDir "native-host.exe"
 $manifestPath = Join-Path $manifestDir "com.local.obsidian_web_clipper.json"
 
-New-Item -ItemType Directory -Force -Path $hostInstallDir | Out-Null
-Copy-Item -Recurse -Force -Path (Join-Path $repoRoot "src\host\*") -Destination $hostInstallDir
+if ($Snapshot) {
+  New-Item -ItemType Directory -Force -Path $hostInstallDir | Out-Null
+  Copy-Item -Recurse -Force -Path (Join-Path $repoHostDir "*") -Destination $hostInstallDir
+}
 
 @"
 using System;
@@ -29,7 +35,7 @@ public static class NativeHostLauncher
         var psi = new ProcessStartInfo
         {
             FileName = @"$nodePath",
-            Arguments = "\"" + @"$hostInstallDir\index.ts" + "\"",
+            Arguments = "\"" + @"$activeHostDir\index.ts" + "\"",
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -48,7 +54,7 @@ public static class NativeHostLauncher
 
         try
         {
-            psi.Arguments = "\"" + @"$hostInstallDir\handle-json-file.ts" + "\" \"" + payloadPath + "\"";
+            psi.Arguments = "\"" + @"$activeHostDir\handle-json-file.ts" + "\" \"" + payloadPath + "\"";
             using (var process = Process.Start(psi))
             {
                 if (process == null)

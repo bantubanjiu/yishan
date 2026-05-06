@@ -7,7 +7,7 @@
 
 Windows + Chrome/Edge 本地网页采集器：保存 URL、选中文本、图片和框选截图到 Obsidian 当天 Inbox 日记。
 
-[![Version](https://img.shields.io/badge/version-0.1.1-2563eb)](./版本记录README.md)
+[![Version](https://img.shields.io/badge/version-0.1.2-2563eb)](./版本记录README.md)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078d4)](#环境要求)
 [![Browser](https://img.shields.io/badge/browser-Chrome%20%2F%20Edge-22c55e)](#安装浏览器扩展)
 [![Runtime](https://img.shields.io/badge/runtime-Node.js%20%3E%3D%2024-339933)](./package.json)
@@ -181,6 +181,16 @@ node .\src\host\configure.ts "D:\path\to\Vault" Inbox Inbox\attachments
 
 脚本会在当前用户 HKCU 下注册 Chrome 和 Edge 的 Native Messaging Host。
 
+默认安装为**源代码联动模式**：浏览器启动 Native Host 时会直接运行当前仓库的 `src/host/handle-json-file.ts`。因此以后更新本仓库代码后，只要仓库路径不变，Native Host 会自动使用最新 Host 逻辑，不需要重复复制安装目录。
+
+只有在你想让 Native Host 脱离仓库、固定使用安装当时的快照时，才使用：
+
+```powershell
+.\scripts\install-native-host.ps1 -ExtensionId "<扩展ID>" -Snapshot
+```
+
+如果移动了仓库目录、换了 Node.js 路径，或更换/重装浏览器扩展导致扩展 ID 改变，需要重新执行注册脚本。
+
 ## 使用方式
 
 - 页面空白处右键：保存当前页面 URL。
@@ -207,7 +217,7 @@ node --check extension\background.js
 
 ## 版本记录
 
-- 当前版本：`0.1.1`
+- 当前版本：`0.1.2`
 - 详细更新历史见 [`版本记录README.md`](./版本记录README.md)。
 
 ## 路线图

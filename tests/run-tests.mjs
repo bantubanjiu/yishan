@@ -370,6 +370,21 @@ test("host request handler can save and read configuration", async () => {
   assert.deepEqual(await handleHostRequest({ type: "get-config" }, configPath), { ok: true, config });
 });
 
+test("native host install defaults to running host code from the repository", async () => {
+  const script = await readFile(new URL("../scripts/install-native-host.ps1", import.meta.url), "utf8");
+
+  assert.match(script, /param\([\s\S]*\[switch\]\$Snapshot/);
+  assert.match(script, /\$activeHostDir\s*=\s*if \(\$Snapshot\) \{ \$hostInstallDir \} else \{ \$repoHostDir \}/);
+  assert.match(script, /psi\.Arguments = "\\""\s*\+\s*@"\$activeHostDir\\handle-json-file\.ts"/);
+});
+
+test("native host install only copies host files for explicit snapshot installs", async () => {
+  const script = await readFile(new URL("../scripts/install-native-host.ps1", import.meta.url), "utf8");
+
+  assert.doesNotMatch(script, /Copy-Item -Recurse -Force -Path \(Join-Path \$repoRoot "src\\host\\\*"\) -Destination \$hostInstallDir/);
+  assert.match(script, /if \(\$Snapshot\)[\s\S]*Copy-Item -Recurse -Force/);
+});
+
 let failed = 0;
 for (const { name, fn } of tests) {
   try {
