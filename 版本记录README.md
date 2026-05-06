@@ -14,7 +14,7 @@
 
 说明：
 
-- `v0.1.0` 是当前代码中可见的正式版本号。
+- `v0.1.1` 是当前代码中可见的正式版本号。
 - `H0.x` 是为了方便回看而整理的“历史迭代记录”，不是正式发布 tag。
 - 历史时间按当前工作区显示的本地时间（Asia/Shanghai）整理；日志原始时间为 UTC。
 - 涉及个人本机路径的配置只记录能力和行为，不在版本记录中展开具体私有路径。
@@ -42,6 +42,34 @@
 ---
 
 ## 当前正式版本
+
+## v0.1.1 - 2026-05-06
+
+### 更新内容
+- 保存选中文本时仍然直接插入 fenced code block，但代码块语言不再固定为 `text`。
+- 选中网页代码区域时，优先使用页面上的 `language-*`、`lang-*`、`data-language`、`data-lang` 等语言提示。
+- 页面没有提供语言提示时，Native Host 会根据文本内容自动识别 JSON、HTML、CSS、JavaScript、TypeScript、Python、Shell、Markdown 等常见格式。
+- 识别失败时回退为 `text`，继续保证摘录内容不会破坏 Obsidian 日记结构。
+
+### 实现方式
+- `extension/background.js` 在构造 selection 消息时新增 `codeLanguage` 字段：
+  - 普通选区会从克隆出的 `<pre>` / `<code>` / 带语言 class 或 data 属性的节点里提取语言。
+  - 输入框、textarea、contenteditable 会沿当前选区所在页面节点向上查找语言提示。
+- `src/host/types.ts` 为 selection 类型增加可选 `codeLanguage`。
+- `src/host/markdown.ts` 在生成代码块时：
+  - 先规范化浏览器传入的语言别名，例如 `javascript` -> `js`、`typescript` -> `ts`、`py` -> `python`。
+  - 再用轻量启发式识别常见文本格式。
+  - 保留更长 fence 逻辑，选中文本内包含反引号时仍能安全保存。
+- `tests/markdown.test.ts` 和 `tests/run-tests.mjs` 增加显式语言、JSON 自动识别、HTML/Python 自动识别、普通文本回退测试。
+
+### 验证方式
+- `node --check extension\background.js`
+- `node --check src\host\markdown.ts`
+- `node tests\run-tests.mjs`
+
+### 已知限制
+- 自动识别是启发式判断，不等同于完整语法解析；不确定时会优先回退 `text`，避免误伤普通摘录。
+- 浏览器侧只能读取页面 DOM 中已经暴露的语言标记；如果网站没有提供相关 class/data 属性，会交给 Native Host 推断。
 
 ## v0.1.0 - 2026-04-30
 
@@ -172,6 +200,7 @@ npm run check
 | H0.8 | 2026-04-29 16:13-17:24 | 截图视觉修复 | 修复截图变色、边框改白色、选中区域完全透明 |
 | H0.9 | 2026-04-29 16:58 | 品牌与图标 | 插件命名为“移山”，更换像素风图标 |
 | H0.10 | 2026-04-30 14:03 | 文本代码块写入 | 保存选中文本改为代码块格式，包含 fence 自适应测试 |
+| v0.1.1 | 2026-05-06 | 自动代码块语言 | 保存选中文本时自动适配代码块语言，继续安全插入 fenced code block |
 
 ---
 

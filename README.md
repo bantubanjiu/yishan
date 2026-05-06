@@ -7,7 +7,7 @@
 
 Windows + Chrome/Edge 本地网页采集器：保存 URL、选中文本、图片和框选截图到 Obsidian 当天 Inbox 日记。
 
-[![Version](https://img.shields.io/badge/version-0.1.0-2563eb)](./版本记录README.md)
+[![Version](https://img.shields.io/badge/version-0.1.1-2563eb)](./版本记录README.md)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078d4)](#环境要求)
 [![Browser](https://img.shields.io/badge/browser-Chrome%20%2F%20Edge-22c55e)](#安装浏览器扩展)
 [![Runtime](https://img.shields.io/badge/runtime-Node.js%20%3E%3D%2024-339933)](./package.json)
@@ -36,7 +36,7 @@ Windows + Chrome/Edge 本地网页采集器：保存 URL、选中文本、图片
 | 能力 | 说明 |
 | --- | --- |
 | 保存页面 URL | 页面空白处右键，一键追加当前页面标题和链接。 |
-| 保存选中文本 | 选中文本后右键保存，按 `text` 代码块写入，避免破坏日记 Markdown 结构。 |
+| 保存选中文本 | 选中文本后右键保存，直接插入代码块；会优先读取网页代码块语言，并自动识别 JSON/HTML/CSS/JS/TS/Python/Shell/Markdown，失败回退 `text`。 |
 | 保存图片 | 图片右键保存，Native Host 下载到附件目录，并写入 Obsidian 嵌入链接。 |
 | 框选截图 | 页面右键后拖拽选择可见区域，裁剪为 PNG 附件。 |
 | 本地静默写入 | Chrome/Edge 扩展通过 Native Messaging 调用本地 Node Host 写入 Vault。 |
@@ -93,11 +93,15 @@ sequenceDiagram
 ````markdown
 - 08:31 [页面标题](https://example.com/article)
 
-```text
-这里是选中的文本。
-即使里面包含 Markdown 符号，也会被稳定保存。
+```json
+{
+  "name": "yishan",
+  "target": "Obsidian"
+}
 ```
 ````
+
+普通摘录会回退为 `text`；如果选中网页 `<pre>` / `<code>` 里的内容，会优先沿用页面提供的 `language-js`、`lang-python`、`data-language` 等语言标记。
 
 ### 图片或截图
 
@@ -180,7 +184,7 @@ node .\src\host\configure.ts "D:\path\to\Vault" Inbox Inbox\attachments
 ## 使用方式
 
 - 页面空白处右键：保存当前页面 URL。
-- 选中文本右键：保存选中文本和来源链接。
+- 选中文本右键：保存选中文本和来源链接，并直接插入自动适配语言的代码块。
 - 图片上右键：下载图片并保存来源。
 - 页面右键选择“框选截图保存到 Obsidian”：拖拽选择截图大小，松开鼠标后保存。
 - 打开扩展“选项”：修改 Vault 路径、Inbox 目录和附件目录。
@@ -203,7 +207,7 @@ node --check extension\background.js
 
 ## 版本记录
 
-- 当前版本：`0.1.0`
+- 当前版本：`0.1.1`
 - 详细更新历史见 [`版本记录README.md`](./版本记录README.md)。
 
 ## 路线图

@@ -62,7 +62,8 @@ async function buildCaptureMessage(info, tab) {
       type: "selection",
       ...base,
       text,
-      markdown: selection.markdown || text
+      markdown: selection.markdown || text,
+      codeLanguage: selection.codeLanguage || undefined
     };
   }
 
@@ -107,7 +108,7 @@ async function getSelectionAsMarkdown(tabId, fallbackText = "") {
 function selectionToMarkdown(fallbackText = "") {
   const editableSelection = getEditableSelectionText();
   if (editableSelection) {
-    return { text: editableSelection, markdown: editableSelection };
+    return { text: editableSelection, markdown: editableSelection, codeLanguage: detectCodeLanguageFromPageContext(document.activeElement) };
   }
 
   const selection = window.getSelection();
@@ -122,7 +123,8 @@ function selectionToMarkdown(fallbackText = "") {
 
   return {
     text: selection.toString(),
-    markdown: chooseSelectionMarkdown(selection.toString(), nodesToMarkdown(Array.from(container.childNodes)).trim())
+    markdown: chooseSelectionMarkdown(selection.toString(), nodesToMarkdown(Array.from(container.childNodes)).trim()),
+    codeLanguage: detectCodeLanguageFromSelection(selection, container)
   };
 
   function chooseSelectionMarkdown(plainText, domMarkdown) {
@@ -168,6 +170,75 @@ function selectionToMarkdown(fallbackText = "") {
     }
 
     return "";
+  }
+
+  function detectCodeLanguageFromSelection(selection, container) {
+    const explicitCodeNode = findLanguageNode(container);
+    if (explicitCodeNode) {
+      return explicitCodeNode;
+    }
+
+    const anchorLanguage = detectCodeLanguageFromPageContext(selection.anchorNode);
+    if (anchorLanguage) {
+      return anchorLanguage;
+    }
+
+    return detectCodeLanguageFromPageContext(selection.focusNode);
+  }
+
+  function detectCodeLanguageFromPageContext(node) {
+    let current = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+    while (current && current !== document.documentElement) {
+      const language = languageFromElement(current);
+      if (language) {
+        return language;
+      }
+      current = current.parentElement;
+    }
+    return "";
+  }
+
+  function findLanguageNode(root) {
+    if (root.nodeType === Node.ELEMENT_NODE) {
+      const rootLanguage = languageFromElement(root);
+      if (rootLanguage) {
+        return rootLanguage;
+      }
+    }
+
+    const node = root.querySelector?.("[class*='language-'], [class*='lang-'], [data-language], [data-lang], pre, code");
+    return node ? languageFromElement(node) : "";
+  }
+
+  function languageFromElement(element) {
+    const tag = element.tagName?.toLowerCase();
+    const direct = [
+      element.getAttribute("data-language"),
+      element.getAttribute("data-lang")
+    ].find(Boolean);
+    if (direct) {
+      return normalizeLanguageName(direct);
+    }
+
+    const classLanguage = Array.from(element.classList || [])
+      .map((className) => /(?:^|[-_])(language|lang)[-_]([a-z0-9_+#.-]+)/i.exec(className)?.[2])
+      .find(Boolean);
+    if (classLanguage) {
+      return normalizeLanguageName(classLanguage);
+    }
+
+    if (tag === "pre") {
+      const nestedCode = element.querySelector?.("code");
+      if (nestedCode && nestedCode !== element) {
+        return languageFromElement(nestedCode);
+      }
+    }
+
+    return "";
+  }
+
+  function normalizeLanguageName(value) {
+    return String(value || "").trim().toLowerCase().replace(/^language-/, "").replace(/^lang-/, "");
   }
 
   function nodesToMarkdown(nodes) {

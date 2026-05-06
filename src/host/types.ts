@@ -11,6 +11,7 @@ export type CaptureMessage =
       pageUrl: string;
       text: string;
       markdown?: string;
+      codeLanguage?: string;
       capturedAt: string;
     }
   | {

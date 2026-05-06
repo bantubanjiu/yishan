@@ -42,6 +42,59 @@ test("uses a longer code fence when selected text already contains backtick fenc
   assert.equal(entry, "- 06:31 [Article](https://example.com/a)\n\n````text\nbefore\n```\ninside\n```\nafter\n````\n");
 });
 
+test("uses explicit selection code language when provided by the browser context", () => {
+  const entry = formatCaptureEntry({
+    type: "selection",
+    title: "Code",
+    pageUrl: "https://example.com/code",
+    text: "const value = 1;",
+    codeLanguage: "javascript",
+    capturedAt: "2026-04-29T06:31:00.000Z"
+  });
+
+  assert.equal(entry, "- 06:31 [Code](https://example.com/code)\n\n```js\nconst value = 1;\n```\n");
+});
+
+test("detects JSON selections and labels the code block", () => {
+  const entry = formatCaptureEntry({
+    type: "selection",
+    title: "JSON",
+    pageUrl: "https://example.com/json",
+    text: '{\n  "name": "yishan",\n  "enabled": true\n}',
+    capturedAt: "2026-04-29T06:31:00.000Z"
+  });
+
+  assert.equal(entry, "- 06:31 [JSON](https://example.com/json)\n\n```json\n{\n  \"name\": \"yishan\",\n  \"enabled\": true\n}\n```\n");
+});
+
+test("detects common code-like selections before falling back to text", () => {
+  const htmlEntry = formatCaptureEntry({
+    type: "selection",
+    title: "HTML",
+    pageUrl: "https://example.com/html",
+    text: '<section class="hero">\n  <h1>移山</h1>\n</section>',
+    capturedAt: "2026-04-29T06:31:00.000Z"
+  });
+  const pythonEntry = formatCaptureEntry({
+    type: "selection",
+    title: "Python",
+    pageUrl: "https://example.com/python",
+    text: "def clip(text):\n    return text.strip()",
+    capturedAt: "2026-04-29T06:32:00.000Z"
+  });
+  const textEntry = formatCaptureEntry({
+    type: "selection",
+    title: "Note",
+    pageUrl: "https://example.com/note",
+    text: "这是一段普通摘录，不应该被误判为代码。",
+    capturedAt: "2026-04-29T06:33:00.000Z"
+  });
+
+  assert.match(htmlEntry, /\n```html\n/);
+  assert.match(pythonEntry, /\n```python\n/);
+  assert.match(textEntry, /\n```text\n/);
+});
+
 test("formats a downloaded image as an embedded Obsidian attachment with original image URL", () => {
   const entry = formatCaptureEntry(
     {
