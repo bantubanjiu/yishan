@@ -7,149 +7,55 @@
 
 Windows/macOS + Chrome/Edge 本地网页采集器：保存 URL、选中文本、图片、框选截图和当前窗口多标签到 Obsidian 当天 Inbox 日记。
 
-[![Version](https://img.shields.io/badge/version-0.2.2-2563eb)](./版本记录README.md)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%2F%20macOS-0078d4)](#环境要求)
-[![Browser](https://img.shields.io/badge/browser-Chrome%20%2F%20Edge-22c55e)](#安装浏览器扩展)
+[![Version](https://img.shields.io/badge/version-0.2.3-2563eb)](./版本记录README.md)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%2F%20macOS-0078d4)](#系统要求)
+[![Browser](https://img.shields.io/badge/browser-Chrome%20%2F%20Edge-22c55e)](#快速安装)
 [![Runtime](https://img.shields.io/badge/runtime-Node.js%20%3E%3D%2024-339933)](./package.json)
-[![Storage](https://img.shields.io/badge/storage-Obsidian%20Markdown-7c3aed)](#写入效果)
+[![License](https://img.shields.io/badge/license-MIT-111827)](./LICENSE)
 
 </div>
 
 ---
 
-## 为什么做
+## 项目简介
 
-很多 Web Clipper 适合“整理一整篇文章”，但日常真正高频的是更轻的动作：看到一个链接、一段文字、一张图、一个局部截图，想立刻扔进当天笔记里，之后再整理。
+移山是一个本地优先的轻量 Web Clipper：不走云端服务，不弹复杂表单，浏览器扩展通过 Native Messaging 调用本机 Node Host，直接把采集结果追加到 Obsidian Vault 的当天 Inbox Markdown。
 
-**移山**的目标是：
+适合高频收集：网页链接、选中文本、网页图片、局部截图，以及当前窗口多个普通标签页。保存条目保持稳定格式：
 
-- 不弹复杂表单。
-- 不打断当前浏览。
-- 不依赖云端服务。
-- 直接写入本地 Obsidian Vault。
-- 采集结果是长期可读的 Markdown 和图片附件。
+```markdown
+- HH:mm [页面标题](页面URL)
+```
 
-同类项目常见结构会把 README 分成简介、快速开始、使用方式和开发说明；本项目也按这个方式组织，并额外加入本地 Native Messaging 架构图，方便以后维护。
+时间和日记文件名按本机本地时间计算。
 
-## 功能亮点
+## 功能清单
 
 | 能力 | 说明 |
 | --- | --- |
 | 保存页面 URL | 页面空白处右键、Popup 或快捷键，一键追加当前页面标题和链接。 |
-| 保存选中文本 | 选中文本后右键保存；也可在 Popup/选项页启用长按 Alt 后拖选自动保存。会优先读取网页代码块语言，并自动识别 JSON/HTML/CSS/JS/TS/Python/Shell/Markdown，失败回退 `text`。 |
-| 保存图片 | 图片右键保存，Native Host 下载到附件目录，并写入 Obsidian 嵌入链接。 |
+| 保存选中文本 | 选中文本后右键保存；也可启用长按 Alt/Ctrl/Shift/Meta 后拖选自动保存。 |
+| 代码块识别 | 优先读取网页代码块语言，并自动识别 JSON/HTML/CSS/JS/TS/Python/Shell/Markdown，失败回退 `text`。 |
+| 保存图片 | 图片右键保存；Native Host 校验图片类型、10 秒超时、20MB 上限，失败时仍写入 Markdown 失败原因。 |
 | 框选截图 | 右键、Popup 或快捷键触发后拖拽选择可见区域，裁剪为 PNG 附件。 |
-| 多标签快速保存 | Popup 或快捷键保存当前窗口全部普通 `http/https/file` 标签页。 |
+| 多标签快速保存 | Popup 或快捷键保存当前窗口全部普通 `http/https/file` 标签页，跳过浏览器内部页。 |
+| 拖选生命周期同步 | 启用拖选保存后，扩展会在标签切换、页面刷新、窗口重新聚焦后同步注入状态。 |
 | 本地阅读器支持 | 支持保存 `file://` 本地页面/文本链接；Chrome PDF 阅读器可保存文件链接，选区能力受浏览器限制。 |
+| Popup 设置 | 配置 Vault、Inbox、附件目录、拖选触发键和是否启用拖选自动保存。 |
 | 本地静默写入 | Chrome/Edge 扩展通过 Native Messaging 调用本地 Node Host 写入 Vault。 |
-| Popup 设置 | 左键点击插件图标打开新 UI，可保存当前页/当前窗口/截图，并配置 Vault、Inbox、附件目录、选区触发键和是否启用拖选自动保存。 |
-| 本地时间追加 | 按本机本地日期写入当天日记，每条记录保留 `- HH:mm [标题](链接)` 来源标题格式。 |
+| 请求安全校验 | Host 端统一校验请求 schema，非法请求返回 `{ ok:false, error:"..." }`。 |
 | 追加保护 | 写入前处理空行和未闭合代码块，降低破坏当天日记的概率。 |
+| 安装诊断 | Windows/macOS 诊断脚本检查 Node、manifest、allowed_origins、config、Vault 和写入权限。 |
 
-## 架构图
+## 系统要求
 
-```mermaid
-flowchart LR
-  User[用户右键 / Popup / 快捷键] --> Ext[Chrome / Edge 扩展\nManifest V3]
-  Ext -->|Native Messaging JSON| Host[Node Native Host]
-  Host --> Config[本地配置\n%USERPROFILE%/.obsidian-web-clipper-local/config.json]
-  Host --> Inbox[Obsidian Vault\nInbox/YYYY-MM-DD.md]
-  Host --> Attach[附件目录\nInbox/attachments]
-
-  Ext -. 选区 DOM / 输入框文本 .-> Selection[选中文本]
-  Ext -. captureVisibleTab + Canvas .-> Screenshot[框选截图 PNG data URL]
-  Host -. HTTP / data URL .-> Image[图片下载/解码]
-```
-
-## 采集流程
-
-```mermaid
-sequenceDiagram
-  participant U as 用户
-  participant E as 浏览器扩展
-  participant H as Native Host
-  participant V as Obsidian Vault
-
-  U->>E: 右键 / Popup / 快捷键触发保存 URL / 文本 / 图片 / 截图 / 多标签
-  E->>E: 组装采集消息
-  E->>H: sendNativeMessage(message)
-  H->>H: 读取配置并校验路径
-  alt 图片或截图
-    H->>H: 下载 URL 或解码 data URL
-    H->>V: 写入附件文件
-  end
-  H->>V: 按本机当天追加 Markdown
-  H-->>E: 返回写入结果
-  E-->>U: 系统通知保存成功/失败
-```
-
-## 写入效果
-
-### URL
-
-```markdown
-- 08:30 [页面标题](https://example.com/article)
-```
-
-### 选中文本
-
-````markdown
-- 08:31 [页面标题](https://example.com/article)
-
-```json
-{
-  "name": "yishan",
-  "target": "Obsidian"
-}
-```
-````
-
-普通摘录会回退为 `text`；如果选中网页 `<pre>` / `<code>` 里的内容，会优先沿用页面提供的 `language-js`、`lang-python`、`data-language` 等语言标记。
-
-### 图片或截图
-
-```markdown
-- 08:32 [页面标题](https://example.com/article)
-  ![[20260429-083200-a1b2c3d4.png]]
-  来源图片：https://example.com/image.png
-```
-
-截图来自 `data:image/png;base64,...` 时，只写入附件嵌入，不会把 base64 长串写进笔记。
-
-## 项目结构
-
-```text
-.
-├─ extension/                 # Chrome/Edge 扩展
-│  ├─ background.js            # 右键菜单、Popup 消息、快捷键、批量采集、截图、Native Messaging
-│  ├─ popup.html/css/js        # 插件左键 Popup UI
-│  ├─ options.html/css/js      # 设置页
-│  ├─ screenshot-crop.js       # 截图选区坐标归一化
-│  └─ icons/                   # 扩展图标
-├─ scripts/
-│  ├─ install-native-host.ps1        # Windows 注册 Chrome/Edge Native Host
-│  └─ install-native-host-macos.sh   # macOS 注册 Chrome/Edge Native Host
-├─ src/host/                   # Node Native Host
-│  ├─ index.ts                 # Native Messaging stdin/stdout 入口
-│  ├─ native-protocol.ts       # 4 字节长度头协议编解码
-│  ├─ host-request.ts          # 请求分发
-│  ├─ config.ts                # 本地配置读写
-│  ├─ markdown.ts              # Markdown 格式化
-│  └─ vault-writer.ts          # Vault 写入和附件处理
-├─ tests/                      # 无子进程派生的测试入口和用例
-├─ README.md
-└─ 版本记录README.md
-```
-
-## 环境要求
-
-- Windows 或 macOS。
-- Chrome 或 Microsoft Edge。
+- Windows 10/11 或 macOS（当前用户安装）。
+- Chrome 或 Microsoft Edge，Manifest V3 扩展。
 - Node.js `>= 24`。
 - 一个本地 Obsidian Vault。
 - Windows 使用 PowerShell 注册 Native Host；macOS 使用 bash + osascript。
 
-## 快速开始
+## 快速安装
 
 ### 1. 克隆仓库
 
@@ -176,11 +82,6 @@ node ./src/host/configure.ts "$HOME/Obsidian/Vault" Inbox Inbox/attachments
 
 ```text
 %USERPROFILE%\.obsidian-web-clipper-local\config.json
-```
-
-macOS 下同样位于用户主目录：
-
-```text
 $HOME/.obsidian-web-clipper-local/config.json
 ```
 
@@ -191,7 +92,7 @@ $HOME/.obsidian-web-clipper-local/config.json
 3. 点击“加载已解压的扩展程序”。
 4. 选择本仓库的 `extension/` 目录。
 5. 复制扩展 ID。
-6. 如果要保存 `file://` 本地文件或本地阅读器页面，在扩展详情页开启“允许访问文件网址”。
+6. 如需保存 `file://` 本地文件或本地阅读器页面，在扩展详情页开启“允许访问文件网址”。
 
 ### 4. 注册 Native Host
 
@@ -207,38 +108,117 @@ macOS：
 bash ./scripts/install-native-host-macos.sh --extension-id "<扩展ID>"
 ```
 
-Windows 脚本会在当前用户 HKCU 下注册 Chrome 和 Edge 的 Native Messaging Host；macOS 脚本会写入当前用户的 Chrome / Edge NativeMessagingHosts 目录。
+默认安装为**源代码联动模式**：浏览器启动 Native Host 时会直接运行当前仓库的 `src/host/handle-json-file.ts`。更新仓库代码后，只要仓库路径不变，Native Host 会自动使用最新 Host 逻辑。
 
-默认安装为**源代码联动模式**：浏览器启动 Native Host 时会直接运行当前仓库的 `src/host/handle-json-file.ts`。因此以后更新本仓库代码后，只要仓库路径不变，Native Host 会自动使用最新 Host 逻辑，不需要重复复制安装目录。
-
-只有在你想让 Native Host 脱离仓库、固定使用安装当时的快照时，才使用：
-
-Windows：
+如果想让 Native Host 脱离仓库、固定使用安装当时快照：
 
 ```powershell
 .\scripts\install-native-host.ps1 -ExtensionId "<扩展ID>" -Snapshot
 ```
 
-macOS：
-
 ```bash
 bash ./scripts/install-native-host-macos.sh --extension-id "<扩展ID>" --snapshot
 ```
 
-如果移动了仓库目录、换了 Node.js 路径，或更换/重装浏览器扩展导致扩展 ID 改变，需要重新执行注册脚本。
+移动仓库目录、换 Node.js 路径，或重装扩展导致扩展 ID 改变后，需要重新执行注册脚本。
+
+## 配置说明
+
+本地配置文件字段：
+
+| 字段 | 默认值 | 说明 |
+| --- | --- | --- |
+| `vaultPath` | 无 | Obsidian Vault 根目录，必须存在。 |
+| `inboxDir` | `Inbox` | 日记 Markdown 写入目录，必须位于 Vault 内。 |
+| `attachmentsDir` | `Inbox/attachments` | 图片/截图附件目录，必须位于 Vault 内。 |
+| `selectionModifier` | `Alt` | 拖选自动保存触发键，可选 `Alt`/`Ctrl`/`Shift`/`Meta`。 |
+| `selectionGestureEnabled` | `false` | 是否启用长按触发键后拖选自动保存。 |
 
 ## 使用方式
 
 - 左键点击插件图标：打开 Popup，可保存当前页、保存当前窗口全部普通标签页、框选截图、修改路径和选区触发键。
 - 页面空白处右键：保存当前页面 URL。
-- 选中文本右键：保存选中文本和来源链接，并直接插入自动适配语言的代码块。
+- 选中文本右键：保存选中文本和来源链接，并插入自动适配语言的代码块。
 - 长按 Alt 后拖选文本：需先在 Popup/选项页启用；显示蓝色高亮框，松开鼠标后自动保存选区；触发键可改为 Ctrl/Shift/Meta。
-- 图片上右键：下载图片并保存来源。
+- 图片上右键：下载图片并保存来源；非图片响应、超时或超过 20MB 会记录失败原因，不阻断正文保存。
 - 页面右键或快捷键 `Alt+Shift+X`：框选截图并保存。
 - 快捷键 `Alt+Shift+S`：保存当前窗口全部普通 `http/https/file` 标签。快捷键可在 `chrome://extensions/shortcuts` 中自定义。
 - 修改 Vault 路径时点击“选择文件夹”，Native Host 会弹出系统文件夹选择器。
 
-## 开发验证
+## 常见问题
+
+### 为什么保存标题必须是 `- HH:mm [标题](URL)`？
+
+这是当前稳定格式，便于当天 Inbox 按时间顺序追加。v0.2.1 起已恢复该格式，并用本机本地时间生成 `HH:mm` 和 `YYYY-MM-DD.md`。
+
+### 拖选自动保存为什么在某些页面不可用？
+
+扩展只能在普通 `http/https/file` 页面注入脚本。`chrome://`、`edge://`、`about:`、商店页面等浏览器内部页会被跳过，避免报错。
+
+### 图片保存失败会丢掉这条记录吗？
+
+不会。Host 会继续写入 Markdown，并在条目里记录 `图片下载失败：...`。常见原因包括 `图片下载超时`、`图片体积超过 20MB`、`响应不是图片内容`、`HTTP xxx` 或 `Invalid data URL`。
+
+### 可以迁移仓库目录吗？
+
+可以，但源代码联动模式下 Native Host manifest 指向当前仓库路径。移动后请重新运行对应安装脚本。
+
+## 故障诊断
+
+Windows：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/diagnose.ps1
+```
+
+macOS：
+
+```bash
+bash ./scripts/diagnose-macos.sh
+```
+
+也可以传入扩展 ID 辅助检查 `allowed_origins`：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/diagnose.ps1 -ExtensionId "<扩展ID>"
+```
+
+```bash
+bash ./scripts/diagnose-macos.sh "<扩展ID>"
+```
+
+诊断脚本会检查 Node、项目版本、浏览器扩展 manifest、Native Messaging manifest、allowed_origins、Native Host launcher、config.json、vaultPath、Inbox、attachments 和测试写入权限，并给出 ✅/❌ 与下一步建议。
+
+## 开发说明
+
+项目结构：
+
+```text
+.
+├─ extension/                 # Chrome/Edge 扩展
+│  ├─ background.js            # 右键菜单、Popup 消息、快捷键、批量采集、截图、Native Messaging
+│  ├─ popup.html/css/js        # 插件左键 Popup UI
+│  ├─ options.html/css/js      # 设置页
+│  ├─ screenshot-crop.js       # 截图选区坐标归一化
+│  └─ icons/                   # 扩展图标
+├─ scripts/
+│  ├─ install-native-host.ps1        # Windows 注册 Chrome/Edge Native Host
+│  ├─ install-native-host-macos.sh   # macOS 注册 Chrome/Edge Native Host
+│  ├─ diagnose.ps1                  # Windows 安装诊断
+│  └─ diagnose-macos.sh             # macOS 安装诊断
+├─ src/host/                   # Node Native Host
+│  ├─ index.ts                 # Native Messaging stdin/stdout 入口
+│  ├─ native-protocol.ts       # 4 字节长度头协议编解码
+│  ├─ host-request.ts          # 请求 schema 校验与分发
+│  ├─ config.ts                # 本地配置读写
+│  ├─ markdown.ts              # Markdown 格式化
+│  └─ vault-writer.ts          # Vault 写入、附件处理、图片安全边界
+├─ tests/                      # 无子进程派生的测试入口和用例
+├─ README.md
+└─ 版本记录README.md
+```
+
+验证命令：
 
 ```powershell
 npm test
@@ -252,31 +232,24 @@ node tests\run-tests.mjs
 node --check extension\background.js
 ```
 
-> 当前环境中 `node --test` 会触发 `spawn EPERM`，所以项目提供了不派生子进程的 `tests/run-tests.mjs`。
+GitHub Actions 会在 Windows/macOS + Node 24.x 上执行 `npm test` 和 `npm run check`。
 
-## 版本记录
+## Roadmap
 
-- 当前版本：`0.2.2`
-- 详细更新历史见 [`版本记录README.md`](./版本记录README.md)。
-
-## 路线图
-
-- [ ] 支持更多截图模式，例如整页长截图。
-- [x] 支持本地时区日期写入，而不是 UTC 日期。
-- [ ] 增加一键打开当天 Inbox 的入口。
-- [ ] 改进 Chrome PDF 阅读器的正文文本抽取能力。
+- [ ] 拆分 `extension/background.js` 为更小的功能模块。
+- [ ] 拆分 Host 端下载、渲染、诊断等模块。
+- [ ] 批量保存改为单次 Native Message 请求，减少 Native Host 启动次数。
+- [ ] 增加一键打开当天 Inbox、附件目录、Vault 根目录和配置文件的入口。
 - [ ] 增加可选的 Markdown 富文本保存模式。
-- [ ] 增加安装/诊断脚本的错误提示和自动修复。
+- [ ] 支持更多截图模式，例如当前视口整页截图、长截图。
+- [ ] 改进 Chrome PDF 阅读器的正文文本抽取能力。
+- [ ] 打包 release zip 和升级脚本。
 
-## 与官方 Obsidian Web Clipper 的区别
+## Changelog
 
-官方 Obsidian Web Clipper 更适合跨浏览器、模板化、文章级采集；移山更偏向个人本地工作流：
-
-- 面向 Windows/macOS + Chrome/Edge 的本地使用。
-- 通过 Native Host 直接写本地 Vault。
-- 优先追求“右键即保存”的低打扰体验。
-- 默认按当天 Inbox 追加，适合先收集、后整理。
+- 当前版本：`0.2.3`
+- 详细更新历史见 [`版本记录README.md`](./版本记录README.md)。
 
 ## License
 
-当前仓库暂未声明开源许可证。公开使用、分发或协作前，建议补充 `LICENSE` 文件。
+MIT License。详见 [`LICENSE`](./LICENSE)。

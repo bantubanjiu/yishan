@@ -39,6 +39,23 @@ chrome.runtime.onStartup?.addListener(() => {
   void syncSelectionGestureForActiveTab();
 });
 
+chrome.tabs.onActivated.addListener(({ tabId }) => {
+  void syncSelectionGestureForTab(tabId);
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === "loading" || changeInfo.status === "complete" || typeof changeInfo.url === "string") {
+    void syncSelectionGestureForTab(tabId, tab);
+  }
+});
+
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  if (windowId === chrome.windows.WINDOW_ID_NONE) {
+    return;
+  }
+  void syncSelectionGestureForActiveTab();
+});
+
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   try {
     const capture = await buildCaptureMessage(info, tab);
@@ -301,6 +318,16 @@ async function syncSelectionGestureForActiveTab() {
   } catch {
     return false;
   }
+}
+
+async function syncSelectionGestureForTab(tabId, knownTab) {
+  const tab = knownTab || await safeGetTab(tabId);
+  if (!isGestureScriptableTab(tab)) {
+    return false;
+  }
+
+  const config = await loadGestureConfig();
+  return injectGestureSaver(tabId, tab, config);
 }
 
 async function injectGestureSaver(tabId, tab, config) {

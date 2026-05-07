@@ -512,6 +512,116 @@ test("downloads a captured image into the configured attachments directory", asy
   assert.equal((await stat(attachmentPath)).isFile(), true);
 });
 
+test("rejects non-image remote responses while still writing the markdown capture", async () => {
+  const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response("<html>not an image</html>", {
+      status: 200,
+      headers: {
+        "content-type": "text/html"
+      }
+    });
+
+  try {
+    const result = await writeCaptureToVault(
+      {
+        type: "image",
+        title: "Remote HTML",
+        pageUrl: "https://example.com/page",
+        imageUrl: "https://cdn.example.com/not-image",
+        capturedAt: localIso(2026, 5, 7, 9, 0)
+      },
+      {
+        vaultPath,
+        inboxDir: "Inbox",
+        attachmentsDir: "Inbox/attachments"
+      }
+    );
+
+    assert.equal(result.attachmentName, undefined);
+    assert.equal(
+      await readFile(localDatePath(vaultPath, 2026, 5, 7), "utf8"),
+      "- 09:00 [Remote HTML](https://example.com/page)\n  图片下载失败：响应不是图片内容\n  来源图片：https://cdn.example.com/not-image\n\n"
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("rejects oversized remote images before writing attachments", async () => {
+  const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(new Uint8Array([1, 2, 3]), {
+      status: 200,
+      headers: {
+        "content-type": "image/png",
+        "content-length": String(20 * 1024 * 1024 + 1)
+      }
+    });
+
+  try {
+    const result = await writeCaptureToVault(
+      {
+        type: "image",
+        title: "Huge Image",
+        pageUrl: "https://example.com/page",
+        imageUrl: "https://cdn.example.com/huge.png",
+        capturedAt: localIso(2026, 5, 7, 9, 1)
+      },
+      {
+        vaultPath,
+        inboxDir: "Inbox",
+        attachmentsDir: "Inbox/attachments"
+      }
+    );
+
+    assert.equal(result.attachmentName, undefined);
+    assert.match(await readFile(localDatePath(vaultPath, 2026, 5, 7), "utf8"), /图片下载失败：图片体积超过 20MB/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("rejects non-image and oversized data URLs without blocking markdown writes", async () => {
+  const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
+
+  await writeCaptureToVault(
+    {
+      type: "image",
+      title: "Text Data",
+      pageUrl: "https://example.com/page",
+      imageUrl: "data:text/plain;base64,aGVsbG8=",
+      capturedAt: localIso(2026, 5, 7, 9, 2)
+    },
+    {
+      vaultPath,
+      inboxDir: "Inbox",
+      attachmentsDir: "Inbox/attachments"
+    }
+  );
+
+  await writeCaptureToVault(
+    {
+      type: "image",
+      title: "Huge Data",
+      pageUrl: "https://example.com/page",
+      imageUrl: `data:image/png;base64,${Buffer.alloc(20 * 1024 * 1024 + 1).toString("base64")}`,
+      capturedAt: localIso(2026, 5, 7, 9, 3)
+    },
+    {
+      vaultPath,
+      inboxDir: "Inbox",
+      attachmentsDir: "Inbox/attachments"
+    }
+  );
+
+  const content = await readFile(localDatePath(vaultPath, 2026, 5, 7), "utf8");
+  assert.match(content, /- 09:02 \[Text Data\]\(https:\/\/example\.com\/page\)\n  图片下载失败：Invalid data URL/);
+  assert.match(content, /- 09:03 \[Huge Data\]\(https:\/\/example\.com\/page\)\n  图片下载失败：图片体积超过 20MB/);
+});
+
 test("rejects inbox paths that escape the configured vault", async () => {
   const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
 
@@ -589,6 +699,142 @@ test("accepts pick-folder native requests", () => {
     type: "pick-folder",
     initialPath: "C:\\Vault"
   });
+});
+
+test("host request schema sanitizes URL captures and falls back empty titles to Untitled", () => {
+  const sanitized = assertHostRequest({
+    type: "url",
+    title: "   ",
+    pageUrl: "https://example.com/page",
+    capturedAt: "2026-05-07T00:00:00.000Z",
+    unexpected: "must not pass through"
+  });
+
+  assert.deepEqual(sanitized, {
+    type: "url",
+    title: "Untitled",
+    pageUrl: "https://example.com/page",
+    capturedAt: "2026-05-07T00:00:00.000Z"
+  });
+});
+
+test("host request schema rejects unsafe page URLs and invalid timestamps", () => {
+  assert.throws(
+    () =>
+      assertHostRequest({
+        type: "url",
+        title: "Bad URL",
+        pageUrl: "javascript:alert(1)",
+        capturedAt: "2026-05-07T00:00:00.000Z"
+      }),
+    /pageUrl/
+  );
+
+  assert.throws(
+    () =>
+      assertHostRequest({
+        type: "url",
+        title: "Bad Time",
+        pageUrl: "https://example.com/page",
+        capturedAt: "not-a-date"
+      }),
+    /capturedAt/
+  );
+});
+
+test("host request schema sanitizes selection, image, config, and pick-folder payloads", () => {
+  const longTitle = "x".repeat(305);
+  assert.deepEqual(assertHostRequest({
+    type: "selection",
+    title: longTitle,
+    pageUrl: "file:///Users/me/Documents/page.html",
+    text: " hello ",
+    markdown: "**hello**",
+    codeLanguage: "language-js",
+    capturedAt: "2026-05-07T00:01:00.000Z",
+    extra: true
+  }), {
+    type: "selection",
+    title: "x".repeat(300),
+    pageUrl: "file:///Users/me/Documents/page.html",
+    text: " hello ",
+    markdown: "**hello**",
+    codeLanguage: "language-js",
+    capturedAt: "2026-05-07T00:01:00.000Z"
+  });
+
+  assert.deepEqual(assertHostRequest({
+    type: "image",
+    title: "Image",
+    pageUrl: "https://example.com/page",
+    imageUrl: "data:image/png;base64,AQID",
+    capturedAt: "2026-05-07T00:02:00.000Z",
+    extra: "ignored"
+  }), {
+    type: "image",
+    title: "Image",
+    pageUrl: "https://example.com/page",
+    imageUrl: "data:image/png;base64,AQID",
+    capturedAt: "2026-05-07T00:02:00.000Z"
+  });
+
+  assert.deepEqual(assertHostRequest({
+    type: "set-config",
+    config: {
+      vaultPath: "D:\\Notes",
+      inboxDir: "Inbox",
+      attachmentsDir: "Inbox/attachments",
+      selectionModifier: "Meta",
+      selectionGestureEnabled: true,
+      unknown: "ignored"
+    },
+    extra: "ignored"
+  }), {
+    type: "set-config",
+    config: {
+      vaultPath: "D:\\Notes",
+      inboxDir: "Inbox",
+      attachmentsDir: "Inbox/attachments",
+      selectionModifier: "Meta",
+      selectionGestureEnabled: true
+    }
+  });
+
+  assert.deepEqual(assertHostRequest({
+    type: "pick-folder",
+    initialPath: "/Users/me/Vault",
+    purpose: "vaultPath"
+  }), {
+    type: "pick-folder",
+    initialPath: "/Users/me/Vault"
+  });
+});
+
+test("host request schema rejects invalid image URLs and invalid config payloads", () => {
+  assert.throws(
+    () =>
+      assertHostRequest({
+        type: "image",
+        title: "Bad Image",
+        pageUrl: "https://example.com/page",
+        imageUrl: "https://example.com/not-image.txt",
+        capturedAt: "2026-05-07T00:02:00.000Z"
+      }),
+    /imageUrl/
+  );
+
+  assert.throws(
+    () =>
+      assertHostRequest({
+        type: "set-config",
+        config: {
+          vaultPath: "",
+          inboxDir: "Inbox",
+          attachmentsDir: "Inbox/attachments"
+        }
+      }),
+    /config\.vaultPath/
+  );
 });
 
 test("host request handler returns selected folder from injected picker", async () => {
@@ -678,8 +924,12 @@ test("extension background gates gesture injection behind explicit enablement an
   assert.match(background, /normalizeSelectionModifier\(config\.selectionModifier \|\| config\.gestureModifier\)/);
   assert.match(background, /modifier:\s*gestureConfig\.selectionModifier/);
   assert.match(background, /syncSelectionGestureForActiveTab/);
-  assert.doesNotMatch(background, /tabs\.onActivated/);
-  assert.doesNotMatch(background, /tabs\.onUpdated/);
+  assert.match(background, /syncSelectionGestureForTab/);
+  assert.match(background, /chrome\.tabs\.onActivated\.addListener/);
+  assert.match(background, /chrome\.tabs\.onUpdated\.addListener/);
+  assert.match(background, /chrome\.windows\.onFocusChanged\.addListener/);
+  assert.match(background, /chrome\.windows\.WINDOW_ID_NONE/);
+  assert.match(background, /isGestureScriptableTab/);
   assert.doesNotMatch(background, /modifier:\s*DEFAULT_SETTINGS\.gestureModifier/);
 });
 
@@ -689,6 +939,62 @@ test("gesture selection path reuses rich selection markdown before saving", asyn
   assert.match(background, /const selection = await getSelectionAsMarkdown\(sender\.tab\?\.id, text\)/);
   assert.match(background, /codeLanguage: typeof message\.codeLanguage === "string"[\s\S]*selection\.codeLanguage/);
   assert.doesNotMatch(background, /const markdown = normalizeSelectionText\(text\)/);
+});
+
+test("image downloader implementation documents timeout and size safety limits", async () => {
+  const vaultWriter = await readFile(new URL("../src/host/vault-writer.ts", import.meta.url), "utf8");
+
+  assert.match(vaultWriter, /IMAGE_DOWNLOAD_TIMEOUT_MS\s*=\s*10_000/);
+  assert.match(vaultWriter, /MAX_IMAGE_BYTES\s*=\s*20\s*\*\s*1024\s*\*\s*1024/);
+  assert.match(vaultWriter, /AbortController/);
+});
+
+test("diagnostic scripts cover Windows and macOS install chains", async () => {
+  const windowsScript = await readFile(new URL("../scripts/diagnose.ps1", import.meta.url), "utf8");
+  const macScript = await readFile(new URL("../scripts/diagnose-macos.sh", import.meta.url), "utf8");
+
+  for (const script of [windowsScript, macScript]) {
+    assert.match(script, /Node/);
+    assert.match(script, /manifest/i);
+    assert.match(script, /allowed_origins/);
+    assert.match(script, /config\.json/);
+    assert.match(script, /vaultPath/);
+    assert.match(script, /Inbox/);
+    assert.match(script, /attachments/);
+    assert.match(script, /Test write|test write|测试写入/);
+    assert.match(script, /✅/);
+    assert.match(script, /❌/);
+  }
+
+  assert.match(windowsScript, /ObsidianWebClipperLocal/);
+  assert.match(windowsScript, /NativeMessagingHosts/);
+  assert.match(macScript, /Google\/Chrome\/NativeMessagingHosts/);
+  assert.match(macScript, /Microsoft Edge\/NativeMessagingHosts/);
+  assert.match(macScript, /native-host/);
+});
+
+test("project metadata, CI, README, and changelog describe v0.2.3 stability release", async () => {
+  const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const manifest = JSON.parse(await readFile(new URL("../extension/manifest.json", import.meta.url), "utf8"));
+  const license = await readFile(new URL("../LICENSE", import.meta.url), "utf8");
+  const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
+  const changelog = await readFile(new URL("../版本记录README.md", import.meta.url), "utf8");
+
+  assert.equal(packageJson.version, "0.2.3");
+  assert.equal(manifest.version, "0.2.3");
+  assert.match(license, /MIT License/);
+  assert.match(ci, /windows-latest/);
+  assert.match(ci, /macos-latest/);
+  assert.match(ci, /node-version:[\s\S]*24\.x/);
+  assert.match(ci, /npm test/);
+  assert.match(ci, /npm run check/);
+  assert.match(readme, /0\.2\.3/);
+  assert.match(readme, /scripts\/diagnose\.ps1/);
+  assert.match(readme, /scripts\/diagnose-macos\.sh/);
+  assert.match(readme, /常见问题/);
+  assert.match(readme, /故障诊断/);
+  assert.match(changelog, /## v0\.2\.3 - 2026-05-07/);
 });
 
 let failed = 0;

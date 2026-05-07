@@ -14,7 +14,7 @@
 
 说明：
 
-- `v0.2.2` 是当前代码中可见的正式版本号。
+- `v0.2.3` 是当前代码中可见的正式版本号。
 - `H0.x` 是为了方便回看而整理的“历史迭代记录”，不是正式发布 tag。
 - 历史时间按当前工作区显示的本地时间（Asia/Shanghai）整理；日志原始时间为 UTC。
 - 涉及个人本机路径的配置只记录能力和行为，不在版本记录中展开具体私有路径。
@@ -42,6 +42,32 @@
 ---
 
 ## 当前正式版本
+
+## v0.2.3 - 2026-05-07
+
+### 更新内容
+- 修复拖选自动保存的注入生命周期：标签切换、页面刷新、窗口重新聚焦后会重新同步启用/停用状态。
+- Native Host 增加统一请求 schema 校验，非法 URL、时间戳、图片地址或配置会返回 `{ ok:false, error:"..." }`，空标题回退 `Untitled`，未知字段不进入业务逻辑。
+- 图片下载增加 10 秒超时、20MB 体积上限和 `image/*` 类型校验；失败时仍追加 Markdown，并记录明确原因。
+- 新增 Windows/macOS 安装诊断脚本，检查 Node、manifest、allowed_origins、config、Vault、Inbox、attachments 和测试写入权限。
+- 补充 MIT License、GitHub Actions CI，并清理 README 的安装、诊断、FAQ、Roadmap 和 Changelog 说明。
+
+### 实现方式
+- `extension/background.js` 增加 `tabs.onActivated`、`tabs.onUpdated`、`windows.onFocusChanged` 监听，并只对 `http/https/file` 页面同步拖选脚本。
+- `src/host/host-request.ts` 对 `url`、`selection`、`image`、`get-config`、`set-config`、`pick-folder` 请求手写白名单校验和字段净化。
+- `src/host/vault-writer.ts` 使用 `AbortController` 控制远程图片超时，校验 `Content-Type`、`Content-Length` 和实际字节长度；`data:image/*` 同样校验解码大小。
+- 新增 `scripts/diagnose.ps1`、`scripts/diagnose-macos.sh`、`.github/workflows/ci.yml`、`LICENSE`。
+- `package.json` 与 `extension/manifest.json` 版本同步为 `0.2.3`。
+
+### 验证方式
+- `npm test`
+- `npm run check`
+
+### 已知限制
+- 批量保存当前仍是扩展端逐个发送 Native Message；后续计划改为单次请求。
+- `background.js` 仍未拆分模块，本次只做稳定性修复，避免计划外重构风险。
+
+---
 
 ## v0.2.2 - 2026-05-07
 
