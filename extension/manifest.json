@@ -11,11 +11,6 @@
     "scripting",
     "tabs"
   ],
-  "host_permissions": [
-    "http://*/*",
-    "https://*/*",
-    "file:///*"
-  ],
   "options_page": "options.html",
   "action": {
     "default_popup": "popup.html"

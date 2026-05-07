@@ -36,13 +36,13 @@ Windows + Chrome/Edge 本地网页采集器：保存 URL、选中文本、图片
 | 能力 | 说明 |
 | --- | --- |
 | 保存页面 URL | 页面空白处右键、Popup 或快捷键，一键追加当前页面标题和链接。 |
-| 保存选中文本 | 选中文本后右键保存，或长按 Alt 后拖选自动保存；会优先读取网页代码块语言，并自动识别 JSON/HTML/CSS/JS/TS/Python/Shell/Markdown，失败回退 `text`。 |
+| 保存选中文本 | 选中文本后右键保存；也可在 Popup/选项页启用长按 Alt 后拖选自动保存。会优先读取网页代码块语言，并自动识别 JSON/HTML/CSS/JS/TS/Python/Shell/Markdown，失败回退 `text`。 |
 | 保存图片 | 图片右键保存，Native Host 下载到附件目录，并写入 Obsidian 嵌入链接。 |
 | 框选截图 | 右键、Popup 或快捷键触发后拖拽选择可见区域，裁剪为 PNG 附件。 |
 | 多标签快速保存 | Popup 或快捷键保存当前窗口全部普通 `http/https/file` 标签页。 |
 | 本地阅读器支持 | 支持保存 `file://` 本地页面/文本链接；Chrome PDF 阅读器可保存文件链接，选区能力受浏览器限制。 |
 | 本地静默写入 | Chrome/Edge 扩展通过 Native Messaging 调用本地 Node Host 写入 Vault。 |
-| Popup 设置 | 左键点击插件图标打开新 UI，可保存当前页/当前窗口/截图，并配置 Vault、Inbox、附件目录和选区触发键。 |
+| Popup 设置 | 左键点击插件图标打开新 UI，可保存当前页/当前窗口/截图，并配置 Vault、Inbox、附件目录、选区触发键和是否启用拖选自动保存。 |
 | 同源分组追加 | 同一天同一链接的文本、图片、截图和 URL 保存在同一个来源分组下，不重复新起条目。 |
 | 追加保护 | 写入前处理空行和未闭合代码块，降低破坏当天日记的概率。 |
 
@@ -88,7 +88,7 @@ sequenceDiagram
 ### URL
 
 ```markdown
-## 页面标题
+## [页面标题](https://example.com/article)
 来源：https://example.com/article
 
 - 08:30 保存链接
@@ -97,7 +97,7 @@ sequenceDiagram
 ### 选中文本
 
 ````markdown
-## 页面标题
+## [页面标题](https://example.com/article)
 来源：https://example.com/article
 
 - 08:31 摘录
@@ -115,7 +115,7 @@ sequenceDiagram
 ### 图片或截图
 
 ```markdown
-## 页面标题
+## [页面标题](https://example.com/article)
 来源：https://example.com/article
 
 - 08:32 图片
@@ -210,7 +210,7 @@ node .\src\host\configure.ts "D:\path\to\Vault" Inbox Inbox\attachments
 - 左键点击插件图标：打开 Popup，可保存当前页、保存当前窗口全部普通标签页、框选截图、修改路径和选区触发键。
 - 页面空白处右键：保存当前页面 URL。
 - 选中文本右键：保存选中文本和来源链接，并直接插入自动适配语言的代码块。
-- 长按 Alt 后拖选文本：显示蓝色高亮框，松开鼠标后自动保存选区；触发键可在 Popup/选项页改为 Ctrl/Shift/Meta。
+- 长按 Alt 后拖选文本：需先在 Popup/选项页启用；显示蓝色高亮框，松开鼠标后自动保存选区；触发键可改为 Ctrl/Shift/Meta。
 - 图片上右键：下载图片并保存来源。
 - 页面右键或快捷键 `Alt+Shift+X`：框选截图并保存。
 - 快捷键 `Alt+Shift+S`：保存当前窗口全部普通 `http/https/file` 标签。快捷键可在 `chrome://extensions/shortcuts` 中自定义。

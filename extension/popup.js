@@ -3,14 +3,16 @@ const DEFAULT_CONFIG = {
   vaultPath: "",
   inboxDir: "Inbox",
   attachmentsDir: "Inbox\\attachments",
-  selectionModifier: "Alt"
+  selectionModifier: "Alt",
+  selectionGestureEnabled: false
 };
 
 const fields = {
   vaultPath: document.querySelector("#vaultPath"),
   inboxDir: document.querySelector("#inboxDir"),
   attachmentsDir: document.querySelector("#attachmentsDir"),
-  selectionModifier: document.querySelector("#selectionModifier")
+  selectionModifier: document.querySelector("#selectionModifier"),
+  selectionGestureEnabled: document.querySelector("#selectionGestureEnabled")
 };
 
 const controls = {
@@ -101,6 +103,7 @@ function applyConfig(config) {
   fields.inboxDir.value = config.inboxDir || DEFAULT_CONFIG.inboxDir;
   fields.attachmentsDir.value = config.attachmentsDir || DEFAULT_CONFIG.attachmentsDir;
   fields.selectionModifier.value = normalizeSelectionModifier(config.selectionModifier || config.gestureModifier);
+  fields.selectionGestureEnabled.checked = config.selectionGestureEnabled === true;
 }
 
 function readConfig() {
@@ -108,7 +111,8 @@ function readConfig() {
     vaultPath: fields.vaultPath.value.trim(),
     inboxDir: fields.inboxDir.value.trim() || DEFAULT_CONFIG.inboxDir,
     attachmentsDir: fields.attachmentsDir.value.trim() || DEFAULT_CONFIG.attachmentsDir,
-    selectionModifier: normalizeSelectionModifier(fields.selectionModifier.value)
+    selectionModifier: normalizeSelectionModifier(fields.selectionModifier.value),
+    selectionGestureEnabled: fields.selectionGestureEnabled.checked
   };
 }
 

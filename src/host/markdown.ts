@@ -58,7 +58,11 @@ export function formatCaptureGroupEntry(
 }
 
 export function formatCaptureSourceHeading(message: CaptureMessage): string {
-  return `## ${escapeMarkdownText(message.title)}\n来源：${message.pageUrl}\n\n`;
+  return formatCaptureSourceHeadingFromTitle(message.title, message.pageUrl);
+}
+
+export function formatCaptureSourceHeadingFromTitle(title: string, pageUrl: string): string {
+  return `## [${escapeMarkdownLinkText(title)}](${pageUrl})\n来源：${pageUrl}\n\n`;
 }
 
 function formatTime(isoDate: string): string {

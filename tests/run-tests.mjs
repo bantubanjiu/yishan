@@ -177,7 +177,7 @@ test("creates the daily inbox note when it does not exist", async () => {
   );
 
   assert.equal(result.notePath, path.join(vaultPath, "Inbox", "2026-04-29.md"));
-  assert.equal(await readFile(result.notePath, "utf8"), "## Example\n来源：https://example.com\n\n- 08:00 保存链接\n\n");
+  assert.equal(await readFile(result.notePath, "utf8"), "## [Example](https://example.com)\n来源：https://example.com\n\n- 08:00 保存链接\n\n");
 });
 
 test("appends to an existing daily inbox note without overwriting prior captures", async () => {
@@ -211,7 +211,7 @@ test("appends to an existing daily inbox note without overwriting prior captures
   const content = await readFile(path.join(vaultPath, "Inbox", "2026-04-29.md"), "utf8");
   assert.equal(
     content,
-    "## First\n来源：https://example.com/1\n\n- 08:00 保存链接\n\n## Second\n来源：https://example.com/2\n\n- 08:01 摘录\n\n```text\nuseful note\n```\n\n"
+    "## [First](https://example.com/1)\n来源：https://example.com/1\n\n- 08:00 保存链接\n\n## [Second](https://example.com/2)\n来源：https://example.com/2\n\n- 08:01 摘录\n\n```text\nuseful note\n```\n\n"
   );
 });
 
@@ -246,9 +246,72 @@ test("groups same-day captures from the same page URL under one source heading",
   const content = await readFile(path.join(vaultPath, "Inbox", "2026-04-29.md"), "utf8");
   assert.equal(
     content,
-    "## Example \\[Docs\\]\n来源：https://example.com/docs\n\n- 08:00 保存链接\n\n- 08:05 摘录\n\n```text\nsame page excerpt\n```\n\n"
+    "## [Example \\[Docs\\]](https://example.com/docs)\n来源：https://example.com/docs\n\n- 08:00 保存链接\n\n- 08:05 摘录\n\n```text\nsame page excerpt\n```\n\n"
   );
   assert.equal(content.match(/^## /gm)?.length, 1);
+});
+
+test("linkifies existing plain grouped headings before appending to the source group", () => {
+  assert.equal(
+    buildUpdatedNoteContent(
+      "## Legacy \\[Docs\\]\n来源：https://example.com/docs\n\n- 08:00 保存链接\n\nmanual note\n",
+      {
+        type: "selection",
+        title: "Renamed Tab",
+        pageUrl: "https://example.com/docs",
+        text: "same page excerpt",
+        capturedAt: "2026-04-29T08:05:00.000Z"
+      },
+      "- 08:05 摘录\n\n```text\nsame page excerpt\n```\n"
+    ),
+    "## [Legacy \\[Docs\\]](https://example.com/docs)\n来源：https://example.com/docs\n\n- 08:00 保存链接\n\nmanual note\n\n- 08:05 摘录\n\n```text\nsame page excerpt\n```\n\n"
+  );
+});
+
+test("migrates a legacy source link entry into the grouped source before appending", () => {
+  assert.equal(
+    buildUpdatedNoteContent(
+      "- 08:00 [Legacy \\[Docs\\]](https://example.com/docs)\n\nmanual note\n",
+      {
+        type: "selection",
+        title: "Renamed Tab",
+        pageUrl: "https://example.com/docs",
+        text: "same page excerpt",
+        capturedAt: "2026-04-29T08:05:00.000Z"
+      },
+      "- 08:05 摘录\n\n```text\nsame page excerpt\n```\n"
+    ),
+    "## [Legacy \\[Docs\\]](https://example.com/docs)\n来源：https://example.com/docs\n\n- 08:00 保存链接\n\nmanual note\n\n- 08:05 摘录\n\n```text\nsame page excerpt\n```\n\n"
+  );
+});
+
+test("serializes concurrent writes to the same daily note without dropping captures", async () => {
+  const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
+  const config = {
+    vaultPath,
+    inboxDir: "Inbox",
+    attachmentsDir: "Inbox/attachments"
+  };
+
+  await Promise.all(
+    Array.from({ length: 8 }, (_, index) =>
+      writeCaptureToVault(
+        {
+          type: "url",
+          title: `Page ${index}`,
+          pageUrl: `https://example.com/${index}`,
+          capturedAt: `2026-04-29T08:0${index}:00.000Z`
+        },
+        config
+      )
+    )
+  );
+
+  const content = await readFile(path.join(vaultPath, "Inbox", "2026-04-29.md"), "utf8");
+  for (let index = 0; index < 8; index += 1) {
+    assert.match(content, new RegExp(`## \\[Page ${index}\\]\\(https://example\\.com/${index}\\)`));
+    assert.match(content, new RegExp(`- 08:0${index} 保存链接`));
+  }
 });
 
 test("keeps captures from the same URL on different UTC dates in separate daily notes", async () => {
@@ -280,11 +343,11 @@ test("keeps captures from the same URL on different UTC dates in separate daily 
 
   assert.equal(
     await readFile(path.join(vaultPath, "Inbox", "2026-04-29.md"), "utf8"),
-    "## Example\n来源：https://example.com/docs\n\n- 23:59 保存链接\n\n"
+    "## [Example](https://example.com/docs)\n来源：https://example.com/docs\n\n- 23:59 保存链接\n\n"
   );
   assert.equal(
     await readFile(path.join(vaultPath, "Inbox", "2026-04-30.md"), "utf8"),
-    "## Example\n来源：https://example.com/docs\n\n- 00:01 保存链接\n\n"
+    "## [Example](https://example.com/docs)\n来源：https://example.com/docs\n\n- 00:01 保存链接\n\n"
   );
 });
 
@@ -307,7 +370,7 @@ test("closes an unclosed manual fenced block before creating a new grouped sourc
       },
       "- 08:00 保存链接\n"
     ),
-    "manual paste\n```*\nnot closed\n\n```\n\n## Example\n来源：https://example.com\n\n- 08:00 保存链接\n\n"
+    "manual paste\n```*\nnot closed\n\n```\n\n## [Example](https://example.com)\n来源：https://example.com\n\n- 08:00 保存链接\n\n"
   );
 });
 
@@ -358,7 +421,8 @@ test("loads older config files with the default selection modifier", async () =>
     vaultPath: path.join(tempDir, "vault"),
     inboxDir: "Inbox",
     attachmentsDir: "Inbox/attachments",
-    selectionModifier: "Alt"
+    selectionModifier: "Alt",
+    selectionGestureEnabled: false
   });
 });
 
@@ -480,7 +544,7 @@ test("host request handler can save and read configuration", async () => {
   assert.deepEqual(await handleHostRequest({ type: "set-config", config }, configPath), { ok: true });
   assert.deepEqual(await handleHostRequest({ type: "get-config" }, configPath), {
     ok: true,
-    config: { ...config, selectionModifier: "Alt" }
+    config: { ...config, selectionModifier: "Alt", selectionGestureEnabled: false }
   });
 });
 
@@ -539,18 +603,30 @@ test("extension manifest exposes popup and keyboard commands", async () => {
   const manifest = JSON.parse(await readFile(new URL("../extension/manifest.json", import.meta.url), "utf8"));
 
   assert.equal(manifest.action.default_popup, "popup.html");
-  assert.deepEqual(manifest.host_permissions, ["http://*/*", "https://*/*", "file:///*"]);
+  assert.equal("host_permissions" in manifest, false);
   assert.equal(manifest.commands["quick-save-current-window"].suggested_key.default, "Alt+Shift+S");
   assert.equal(manifest.commands["capture-screenshot-area"].suggested_key.default, "Alt+Shift+X");
 });
 
-test("extension background uses persisted selectionModifier for gesture injection", async () => {
+test("extension background gates gesture injection behind explicit enablement and active-tab sync", async () => {
   const background = await readFile(new URL("../extension/background.js", import.meta.url), "utf8");
 
   assert.match(background, /selectionModifier:\s*"Alt"/);
+  assert.match(background, /selectionGestureEnabled:\s*false/);
   assert.match(background, /normalizeSelectionModifier\(config\.selectionModifier \|\| config\.gestureModifier\)/);
   assert.match(background, /modifier:\s*gestureConfig\.selectionModifier/);
+  assert.match(background, /syncSelectionGestureForActiveTab/);
+  assert.doesNotMatch(background, /tabs\.onActivated/);
+  assert.doesNotMatch(background, /tabs\.onUpdated/);
   assert.doesNotMatch(background, /modifier:\s*DEFAULT_SETTINGS\.gestureModifier/);
+});
+
+test("gesture selection path reuses rich selection markdown before saving", async () => {
+  const background = await readFile(new URL("../extension/background.js", import.meta.url), "utf8");
+
+  assert.match(background, /const selection = await getSelectionAsMarkdown\(sender\.tab\?\.id, text\)/);
+  assert.match(background, /codeLanguage: typeof message\.codeLanguage === "string"[\s\S]*selection\.codeLanguage/);
+  assert.doesNotMatch(background, /const markdown = normalizeSelectionText\(text\)/);
 });
 
 let failed = 0;

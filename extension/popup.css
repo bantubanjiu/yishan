@@ -132,6 +132,18 @@ h2 {
   font-weight: 750;
 }
 
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.checkbox-field input {
+  width: auto;
+  min-width: 18px;
+}
+
 input,
 select {
   width: 100%;

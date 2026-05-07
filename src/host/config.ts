@@ -7,6 +7,7 @@ import type { AppConfig } from "./types.ts";
 const APP_DIR = path.join(homedir(), ".obsidian-web-clipper-local");
 export const DEFAULT_CONFIG_PATH = path.join(APP_DIR, "config.json");
 export const DEFAULT_SELECTION_MODIFIER = "Alt";
+export const DEFAULT_SELECTION_GESTURE_ENABLED = false;
 
 export async function loadConfig(configPath = DEFAULT_CONFIG_PATH): Promise<AppConfig> {
   const raw = await readFile(configPath, "utf8");
@@ -36,6 +37,9 @@ export function validateConfig(value: unknown): asserts value is AppConfig {
   ) {
     throw new Error("Config field selectionModifier must be a non-empty string");
   }
+  if ("selectionGestureEnabled" in value && typeof value.selectionGestureEnabled !== "boolean") {
+    throw new Error("Config field selectionGestureEnabled must be a boolean");
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -45,6 +49,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function withConfigDefaults(config: AppConfig): AppConfig {
   return {
     ...config,
-    selectionModifier: config.selectionModifier ?? DEFAULT_SELECTION_MODIFIER
+    selectionModifier: config.selectionModifier ?? DEFAULT_SELECTION_MODIFIER,
+    selectionGestureEnabled: config.selectionGestureEnabled ?? DEFAULT_SELECTION_GESTURE_ENABLED
   };
 }

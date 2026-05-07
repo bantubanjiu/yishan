@@ -27,6 +27,7 @@ export type AppConfig = {
   inboxDir: string;
   attachmentsDir: string;
   selectionModifier?: string;
+  selectionGestureEnabled?: boolean;
 };
 
 export type HostResponse =

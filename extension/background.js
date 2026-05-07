@@ -5,6 +5,7 @@ const DEFAULT_SETTINGS = {
   inboxDir: "Inbox",
   attachmentsDir: "Inbox\\attachments",
   selectionModifier: "Alt",
+  selectionGestureEnabled: false,
   gestureLongPressMs: 250
 };
 const ORDINARY_TAB_PROTOCOLS = new Set(["http:", "https:", "file:"]);
@@ -31,22 +32,11 @@ chrome.runtime.onInstalled.addListener(() => {
     contexts: ["page", "selection", "image", "editable"]
   });
 
-  void injectGestureSaverIntoOpenTabs();
+  void syncSelectionGestureForActiveTab();
 });
 
 chrome.runtime.onStartup?.addListener(() => {
-  void injectGestureSaverIntoOpenTabs();
-});
-
-chrome.tabs.onActivated.addListener(async ({ tabId }) => {
-  const tab = await safeGetTab(tabId);
-  await injectGestureSaver(tabId, tab);
-});
-
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === "complete" || changeInfo.url) {
-    void injectGestureSaver(tabId, tab);
-  }
+  void syncSelectionGestureForActiveTab();
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
@@ -151,7 +141,7 @@ async function handleRuntimeMessage(message, sender) {
 
   if (message.type === "set-config") {
     const response = await sendNativeMessage({ type: "set-config", config: normalizeConfig(message.config || {}) });
-    await injectGestureSaverIntoOpenTabs();
+    await syncSelectionGestureForActiveTab();
     return response;
   }
 
@@ -187,7 +177,8 @@ async function handleRuntimeMessage(message, sender) {
   if (message.type === "save-selection-from-gesture") {
     const tab = sender.tab || {};
     const text = typeof message.text === "string" ? message.text : "";
-    const markdown = typeof message.markdown === "string" ? message.markdown : text;
+    const selection = await getSelectionAsMarkdown(sender.tab?.id, text);
+    const markdown = typeof message.markdown === "string" ? message.markdown : selection.markdown || text;
     if (!text.trim() && !markdown.trim()) {
       return { ok: false, error: "没有检测到选中文本" };
     }
@@ -197,7 +188,7 @@ async function handleRuntimeMessage(message, sender) {
       pageUrl: tab?.url || message.pageUrl || "",
       text,
       markdown,
-      codeLanguage: typeof message.codeLanguage === "string" ? message.codeLanguage || undefined : undefined,
+      codeLanguage: typeof message.codeLanguage === "string" ? message.codeLanguage || undefined : selection.codeLanguage || undefined,
       capturedAt: new Date().toISOString()
     });
     notify("已保存选中文本到 Obsidian");
@@ -302,10 +293,14 @@ function isOrdinaryTab(tab) {
   }
 }
 
-async function injectGestureSaverIntoOpenTabs() {
-  const tabs = await chrome.tabs.query({});
+async function syncSelectionGestureForActiveTab() {
   const config = await loadGestureConfig();
-  await Promise.all(tabs.map((tab) => injectGestureSaver(tab.id, tab, config)));
+  try {
+    const tab = await getActiveTab();
+    return injectGestureSaver(tab.id, tab, config);
+  } catch {
+    return false;
+  }
 }
 
 async function injectGestureSaver(tabId, tab, config) {
@@ -315,6 +310,13 @@ async function injectGestureSaver(tabId, tab, config) {
 
   try {
     const gestureConfig = config || await loadGestureConfig();
+    if (!gestureConfig.selectionGestureEnabled) {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        func: uninstallAltDragSelectionSaver
+      });
+      return false;
+    }
     await chrome.scripting.executeScript({
       target: { tabId },
       func: installAltDragSelectionSaver,
@@ -353,7 +355,8 @@ function normalizeConfig(config) {
     ...config,
     inboxDir: config.inboxDir || DEFAULT_SETTINGS.inboxDir,
     attachmentsDir: config.attachmentsDir || DEFAULT_SETTINGS.attachmentsDir,
-    selectionModifier: normalizeSelectionModifier(config.selectionModifier || config.gestureModifier)
+    selectionModifier: normalizeSelectionModifier(config.selectionModifier || config.gestureModifier),
+    selectionGestureEnabled: config.selectionGestureEnabled === true
   };
 }
 
@@ -912,13 +915,12 @@ function installAltDragSelectionSaver(options = {}) {
     const shouldSave = state.dragging;
     const selection = window.getSelection();
     const text = selection?.toString() || "";
-    const markdown = normalizeSelectionText(text);
     window.clearTimeout(state.timer);
     state.overlay?.remove();
     state.overlay = null;
     state.box = null;
 
-    if (!shouldSave || !markdown.trim()) {
+    if (!shouldSave || !text.trim()) {
       resetGestureState();
       return;
     }
@@ -926,7 +928,6 @@ function installAltDragSelectionSaver(options = {}) {
     chrome.runtime.sendMessage({
       type: "save-selection-from-gesture",
       text,
-      markdown,
       pageUrl: location.href
     }, () => {
       void chrome.runtime.lastError;
@@ -1020,22 +1021,21 @@ function installAltDragSelectionSaver(options = {}) {
     return true;
   }
 
-  function normalizeSelectionText(text) {
-    return String(text || "")
-      .replace(/\r\n?/g, "\n")
-      .split("\n")
-      .map((line) => line.replace(/[ \t]+$/g, ""))
-      .join("\n")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-  }
-
   window.addEventListener("keydown", onKeyDown, true);
   window.addEventListener("keyup", onKeyUp, true);
   window.addEventListener("mousedown", onMouseDown, true);
   window.addEventListener("mousemove", onMouseMove, true);
   window.addEventListener("mouseup", onMouseUp, true);
   window[stateKey] = { cleanup };
+}
+
+function uninstallAltDragSelectionSaver() {
+  const stateKey = "__obsidianWebClipperAltDragSelectionSaver";
+  const previous = window[stateKey];
+  if (previous?.cleanup) {
+    previous.cleanup();
+  }
+  delete window[stateKey];
 }
 
 function notify(message) {
