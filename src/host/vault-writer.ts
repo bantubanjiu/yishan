@@ -4,7 +4,7 @@ import path from "node:path";
 import { errorMessage, isNodeError } from "./errors.ts";
 import { buildAttachmentName, buildPageAttachmentName, buildPageNoteBaseName, formatDate } from "./filename.ts";
 import { defaultFetchBinary, type FetchBinaryResult, validateDownloadedImage } from "./image-downloader.ts";
-import { formatCaptureEntry } from "./markdown-renderer.ts";
+import { formatCaptureEntry, formatCaptureSubentry, formatPageGroupHeading } from "./markdown-renderer.ts";
 import type { AppConfig, CaptureMessage } from "./types.ts";
 
 export type VaultWriterDeps = {
@@ -51,7 +51,7 @@ export async function writeCaptureToVault(
     }
   }
 
-  const entry = formatCaptureEntry(message, { attachmentName, imageError });
+  const entry = formatCaptureSubentry(message, { attachmentName, imageError });
   await withFileLock(`${notePath}.lock`, async () => {
     const existingContent = await readExistingFile(notePath);
     await writeFile(notePath, buildUpdatedNoteContent(existingContent, message, entry), "utf8");
@@ -101,9 +101,19 @@ async function writePageCaptureToVault(
   return { notePath: reservedNote.notePath, attachments };
 }
 
-export function buildUpdatedNoteContent(existingContent: string, _message: CaptureMessage, entry: string): string {
+export function buildUpdatedNoteContent(existingContent: string, message: CaptureMessage, entry: string): string {
   const normalizedExisting = existingContent.replace(/\r\n?/g, "\n");
-  return normalizedExisting + buildAppendText(normalizedExisting, entry);
+  if (message.type === "page") {
+    return normalizedExisting + buildAppendText(normalizedExisting, entry);
+  }
+
+  const insertion = insertIntoExistingPageGroup(normalizedExisting, message, entry);
+  if (insertion !== undefined) {
+    return insertion;
+  }
+
+  const groupedEntry = `${formatPageGroupHeading(message)}\n\n${entry}`;
+  return normalizedExisting + buildAppendText(normalizedExisting, groupedEntry);
 }
 
 export function buildAppendText(existingContent: string, entry: string): string {
@@ -121,6 +131,43 @@ export function buildAppendText(existingContent: string, entry: string): string 
 
 function buildFenceClosureText(markdown: string): string {
   return hasUnclosedFence(markdown) ? "```\n\n" : "";
+}
+
+function insertIntoExistingPageGroup(
+  existingContent: string,
+  message: Exclude<CaptureMessage, { type: "page" }>,
+  entry: string
+): string | undefined {
+  const heading = findPageGroupHeading(existingContent, message.pageUrl);
+  if (!heading) {
+    return undefined;
+  }
+
+  const groupEnd = findNextPageGroupStart(existingContent, heading.end);
+  const beforeGroup = existingContent.slice(0, groupEnd);
+  const afterGroup = existingContent.slice(groupEnd);
+  return beforeGroup + buildAppendText(beforeGroup, entry) + afterGroup;
+}
+
+function findPageGroupHeading(markdown: string, pageUrl: string): { start: number; end: number } | undefined {
+  const headingPattern = /^## \[(?:[^\]\\]|\\.)*\]\(([^)\n]+)\)[ \t]*$/gm;
+  let match: RegExpExecArray | null;
+  while ((match = headingPattern.exec(markdown)) !== null) {
+    if (match[1] === pageUrl) {
+      return {
+        start: match.index,
+        end: match.index + match[0].length
+      };
+    }
+  }
+  return undefined;
+}
+
+function findNextPageGroupStart(markdown: string, fromIndex: number): number {
+  const nextHeadingPattern = /^## \[(?:[^\]\\]|\\.)*\]\([^)]+\)[ \t]*$/gm;
+  nextHeadingPattern.lastIndex = fromIndex;
+  const match = nextHeadingPattern.exec(markdown);
+  return match ? match.index : markdown.length;
 }
 
 async function readExistingFile(filePath: string): Promise<string> {

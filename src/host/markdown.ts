@@ -14,23 +14,32 @@ export function formatCaptureEntry(
     return formatPageDocument(message);
   }
 
-  const title = `- [${escapeMarkdownLinkText(message.title)}](${message.pageUrl})`;
-  const timestamp = `  - ${formatTime(message.capturedAt)}`;
-  const header = `${title}\n\n${timestamp}`;
+  return `${formatPageGroupHeading(message)}\n\n${formatCaptureSubentry(message, options)}`;
+}
+
+export function formatPageGroupHeading(message: Exclude<CaptureMessage, { type: "page" }>): string {
+  return `## [${escapeMarkdownLinkText(message.title)}](${message.pageUrl})`;
+}
+
+export function formatCaptureSubentry(message: Exclude<CaptureMessage, { type: "page" }>, options: FormatCaptureOptions = {}): string {
+  const timestamp = formatTime(message.capturedAt);
 
   if (message.type === "url") {
-    return `${header}\n`;
+    return `### ${timestamp} 保存链接\n`;
   }
 
   if (message.type === "selection") {
-    return `${header}\n${formatFencedCodeBlock(message.text, message.codeLanguage)}\n`;
+    if (hasRichSelectionMarkdown(message)) {
+      return `### ${timestamp} 富文本摘录\n\n${normalizeMarkdown(message.markdown ?? "")}\n`;
+    }
+    return `### ${timestamp} 文字摘录\n\n${formatFencedCodeBlock(message.text, message.codeLanguage)}\n`;
   }
 
-  const lines = [title, "", timestamp];
+  const lines = [`### ${timestamp} ${message.imageUrl.startsWith("data:image/") ? "截图" : "图片"}`, ""];
   if (options.attachmentName) {
-    lines.push(`  ![[${options.attachmentName}]]`);
+    lines.push(`![[${options.attachmentName}]]`);
   } else if (options.imageError) {
-    lines.push(`  图片下载失败：${options.imageError}`);
+    lines.push(`图片下载失败：${options.imageError}`);
   }
   return `${lines.join("\n")}\n`;
 }
@@ -70,6 +79,27 @@ function formatFencedCodeBlock(text: string, explicitLanguage?: string): string 
   const fence = buildFence(content);
   const language = normalizeCodeLanguage(explicitLanguage) || detectCodeLanguage(content);
   return `${fence}${language}\n${content}\n${fence}`;
+}
+
+function hasRichSelectionMarkdown(message: Extract<CaptureMessage, { type: "selection" }>): boolean {
+  const markdown = normalizeMarkdown(message.markdown ?? "");
+  if (!markdown) {
+    return false;
+  }
+  return markdown !== normalizeMarkdown(message.text) && markdown !== normalizePlainSelectionText(message.text);
+}
+
+function normalizeMarkdown(markdown: string): string {
+  return markdown.replace(/\r\n?/g, "\n").trim();
+}
+
+function normalizePlainSelectionText(text: string): string {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
 }
 
 function buildFence(content: string): string {
