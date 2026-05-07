@@ -43,6 +43,25 @@
 
 ## 当前正式版本
 
+## v0.2.1 - 2026-05-07
+
+### 更新内容
+- 恢复保存条目标题格式为 `- HH:mm [页面标题](页面URL)`，不再把来源写成 `## [标题](URL)` + `来源：URL` 分组。
+- 保存时间和当天日记文件名改为按本机本地时间计算，避免 UTC 时间导致小时和日期偏移。
+- 保留 0.2.0 的并发写入文件锁、Popup、快捷键、拖选开关和权限收敛等修复。
+
+### 实现方式
+- `src/host/markdown.ts` 使用本机 `Date#getHours()` / `getMinutes()` 格式化条目时间。
+- `src/host/vault-writer.ts` 恢复逐条追加 `formatCaptureEntry(...)`，日期和附件文件名改用本机本地年月日时分秒。
+- `tests/run-tests.mjs`、`tests/markdown.test.ts`、`tests/vault-writer.test.ts` 增加逐条标题格式和本机时间回归用例。
+
+### 验证方式
+- `npm run check`
+- `git diff --check`
+- `node --test tests/markdown.test.ts tests/vault-writer.test.ts`
+
+---
+
 ## v0.2.0 - 2026-05-06
 
 ### 更新内容
@@ -51,7 +70,7 @@
 - 新增快捷键：`Alt+Shift+S` 保存当前窗口标签，`Alt+Shift+X` 进入框选截图；用户可在 Chrome 快捷键设置中自定义。
 - 新增长按 Alt 后拖选文本自动保存；默认为关闭，可在 Popup/选项页启用，触发键可改为 Ctrl/Shift/Meta。
 - 支持 `file://` 本地页面/阅读器链接保存；Chrome PDF 阅读器先保存文件链接，正文选区抽取仍受浏览器限制。
-- 同一天同一链接的 URL、文本、图片和截图会写入同一个来源分组，不再重复新起条目。
+- URL、文本、图片和截图恢复为逐条追加的 `- HH:mm [标题](URL)` 格式，时间和日记日期按本机本地时间计算。
 - 修改 Vault 路径时可通过 Native Host 弹出系统文件夹选择器，不必手动输入完整路径。
 
 ### 实现方式
@@ -60,8 +79,8 @@
 - 新增 `extension/popup.html/css/js`，并同步升级 `options.html/css/js` 的路径选择、选区触发键和拖选自动保存开关配置。
 - `src/host/config.ts` 为旧配置补默认 `selectionModifier: "Alt"` 和 `selectionGestureEnabled: false`。
 - `src/host/host-request.ts` 增加 `pick-folder` 请求，Windows 下通过 PowerShell/.NET FolderBrowserDialog 选择目录。
-- `src/host/vault-writer.ts` 和 `src/host/markdown.ts` 改为按当天日记内 `## [标题](URL)` + `来源：URL` 分组追加，并用文件锁保护同一天并发写入。
-- `tests/run-tests.mjs` 增加同源分组、旧格式兼容、并发写入、旧配置默认值、文件夹选择请求、manifest/popup/快捷键集成检查。
+- `src/host/vault-writer.ts` 和 `src/host/markdown.ts` 保持逐条来源链接追加，并用文件锁保护同一天并发写入。
+- `tests/run-tests.mjs` 增加逐条来源链接、本机时间、并发写入、旧配置默认值、文件夹选择请求、manifest/popup/快捷键集成检查。
 
 ### 验证方式
 - `node --check extension\background.js`
@@ -238,7 +257,7 @@ npm run check
 
 ### 已知限制
 - 当前记录基于现有代码快照整理；当前目录未检测到 Git 仓库，因此无法从提交历史还原更早的精确 diff。
-- 采集日期和时间目前按 `capturedAt` 的 UTC 日期/时间格式化；如果希望 Obsidian 日记严格使用本地时区，需要后续调整日期格式化逻辑。
+- 采集日期和时间按本机本地时区从 `capturedAt` 格式化；跨时区同步设备时，不同设备本地时区可能导致日记日期不同。
 - 框选截图只截取当前可见页面区域，不支持自动滚动长截图。
 - 图片下载依赖 Native Host 的网络访问；如果目标站点防盗链、鉴权或网络失败，会在日记中记录失败原因。
 - Native Host 安装脚本面向 Windows + 当前用户 HKCU；其他系统或全局安装方式暂未覆盖。
@@ -261,7 +280,8 @@ npm run check
 | H0.10 | 2026-04-30 14:03 | 文本代码块写入 | 保存选中文本改为代码块格式，包含 fence 自适应测试 |
 | v0.1.1 | 2026-05-06 | 自动代码块语言 | 保存选中文本时自动适配代码块语言，继续安全插入 fenced code block |
 | v0.1.2 | 2026-05-06 | Native Host 源码联动 | 默认让 Native Host 直接运行当前仓库 Host 源码，避免安装目录旧拷贝滞后 |
-| v0.2.0 | 2026-05-06 | 快捷采集主线升级 | Popup、多标签保存、快捷键、Alt 拖选、同源分组与文件夹选择 |
+| v0.2.0 | 2026-05-06 | 快捷采集主线升级 | Popup、多标签保存、快捷键、Alt 拖选、逐条来源链接、本机时间与文件夹选择 |
+| v0.2.1 | 2026-05-07 | 标题格式与本机时间修复 | 恢复 `- HH:mm [标题](URL)` 保存格式，并按本机时间写入 |
 
 ---
 

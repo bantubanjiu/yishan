@@ -31,59 +31,16 @@ export function formatCaptureEntry(
   return `${lines.join("\n")}\n`;
 }
 
-export function formatCaptureGroupEntry(
-  message: CaptureMessage,
-  options: FormatCaptureOptions = {}
-): string {
-  const source = `- ${formatTime(message.capturedAt)} ${captureActionLabel(message.type)}`;
-
-  if (message.type === "url") {
-    return `${source}\n`;
-  }
-
-  if (message.type === "selection") {
-    return `${source}\n\n${formatFencedCodeBlock(message.text, message.codeLanguage)}\n`;
-  }
-
-  const lines = [source];
-  if (options.attachmentName) {
-    lines.push(`  ![[${options.attachmentName}]]`);
-  } else if (options.imageError) {
-    lines.push(`  图片下载失败：${options.imageError}`);
-  }
-  if (!message.imageUrl.startsWith("data:")) {
-    lines.push(`  来源图片：${message.imageUrl}`);
-  }
-  return `${lines.join("\n")}\n`;
-}
-
-export function formatCaptureSourceHeading(message: CaptureMessage): string {
-  return formatCaptureSourceHeadingFromTitle(message.title, message.pageUrl);
-}
-
-export function formatCaptureSourceHeadingFromTitle(title: string, pageUrl: string): string {
-  return `## [${escapeMarkdownLinkText(title)}](${pageUrl})\n来源：${pageUrl}\n\n`;
-}
-
 function formatTime(isoDate: string): string {
   const date = new Date(isoDate);
   if (Number.isNaN(date.getTime())) {
     throw new Error(`Invalid capturedAt timestamp: ${isoDate}`);
   }
-  return `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function pad(value: number): string {
   return value.toString().padStart(2, "0");
-}
-
-function captureActionLabel(type: CaptureMessage["type"]): string {
-  const labels: Record<CaptureMessage["type"], string> = {
-    url: "保存链接",
-    selection: "摘录",
-    image: "图片"
-  };
-  return labels[type];
 }
 
 function formatFencedCodeBlock(text: string, explicitLanguage?: string): string {
@@ -203,8 +160,4 @@ function looksLikeMarkdown(content: string): boolean {
 
 function escapeMarkdownLinkText(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll("[", "\\[").replaceAll("]", "\\]");
-}
-
-function escapeMarkdownText(value: string): string {
-  return escapeMarkdownLinkText(value).replaceAll("#", "\\#");
 }

@@ -16,15 +16,41 @@ function test(name, fn) {
   tests.push({ name, fn });
 }
 
+function localIso(year, month, day, hour, minute, second = 0) {
+  return new Date(year, month - 1, day, hour, minute, second).toISOString();
+}
+
+function localDatePath(vaultPath, year, month, day) {
+  return path.join(vaultPath, "Inbox", `${year}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}.md`);
+}
+
+function localTime(isoDate) {
+  const date = new Date(isoDate);
+  return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
+}
+
 test("formats a captured URL as one timestamped markdown list item", () => {
   const entry = formatCaptureEntry({
     type: "url",
     title: "Example [Docs]",
     pageUrl: "https://example.com/docs",
-    capturedAt: "2026-04-29T06:30:00.000Z"
+    capturedAt: localIso(2026, 4, 29, 6, 30)
   });
 
   assert.equal(entry, "- 06:30 [Example \\[Docs\\]](https://example.com/docs)\n");
+});
+
+test("formats capture time in the host local timezone", () => {
+  const capturedAt = new Date(Date.UTC(2026, 3, 29, 6, 30)).toISOString();
+
+  const entry = formatCaptureEntry({
+    type: "url",
+    title: "Local Time",
+    pageUrl: "https://example.com/local-time",
+    capturedAt
+  });
+
+  assert.equal(entry, `- ${localTime(capturedAt)} [Local Time](https://example.com/local-time)\n`);
 });
 
 test("formats selected text as an Obsidian fenced code block under the source link", () => {
@@ -34,7 +60,7 @@ test("formats selected text as an Obsidian fenced code block under the source li
     pageUrl: "https://example.com/a",
     text: "first line\n  second line",
     markdown: "## Heading\n\n**first line**\n\nsecond line",
-    capturedAt: "2026-04-29T06:31:00.000Z"
+    capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
   assert.equal(entry, "- 06:31 [Article](https://example.com/a)\n\n```text\nfirst line\n  second line\n```\n");
@@ -46,7 +72,7 @@ test("uses a longer code fence when selected text already contains backtick fenc
     title: "Article",
     pageUrl: "https://example.com/a",
     text: "before\n```\ninside\n```\nafter",
-    capturedAt: "2026-04-29T06:31:00.000Z"
+    capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
   assert.equal(entry, "- 06:31 [Article](https://example.com/a)\n\n````text\nbefore\n```\ninside\n```\nafter\n````\n");
@@ -59,7 +85,7 @@ test("uses explicit selection code language when provided by the browser context
     pageUrl: "https://example.com/code",
     text: "const value = 1;",
     codeLanguage: "javascript",
-    capturedAt: "2026-04-29T06:31:00.000Z"
+    capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
   assert.equal(entry, "- 06:31 [Code](https://example.com/code)\n\n```js\nconst value = 1;\n```\n");
@@ -71,7 +97,7 @@ test("detects JSON selections and labels the code block", () => {
     title: "JSON",
     pageUrl: "https://example.com/json",
     text: '{\n  "name": "yishan",\n  "enabled": true\n}',
-    capturedAt: "2026-04-29T06:31:00.000Z"
+    capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
   assert.equal(entry, "- 06:31 [JSON](https://example.com/json)\n\n```json\n{\n  \"name\": \"yishan\",\n  \"enabled\": true\n}\n```\n");
@@ -83,21 +109,21 @@ test("detects common code-like selections before falling back to text", () => {
     title: "HTML",
     pageUrl: "https://example.com/html",
     text: '<section class="hero">\n  <h1>移山</h1>\n</section>',
-    capturedAt: "2026-04-29T06:31:00.000Z"
+    capturedAt: localIso(2026, 4, 29, 6, 31)
   });
   const pythonEntry = formatCaptureEntry({
     type: "selection",
     title: "Python",
     pageUrl: "https://example.com/python",
     text: "def clip(text):\n    return text.strip()",
-    capturedAt: "2026-04-29T06:32:00.000Z"
+    capturedAt: localIso(2026, 4, 29, 6, 32)
   });
   const textEntry = formatCaptureEntry({
     type: "selection",
     title: "Note",
     pageUrl: "https://example.com/note",
     text: "这是一段普通摘录，不应该被误判为代码。",
-    capturedAt: "2026-04-29T06:33:00.000Z"
+    capturedAt: localIso(2026, 4, 29, 6, 33)
   });
 
   assert.match(htmlEntry, /\n```html\n/);
@@ -112,7 +138,7 @@ test("formats a downloaded image as an embedded Obsidian attachment with origina
       title: "Image Page",
       pageUrl: "https://example.com/page",
       imageUrl: "https://cdn.example.com/image.jpg",
-      capturedAt: "2026-04-29T06:32:00.000Z"
+      capturedAt: localIso(2026, 4, 29, 6, 32)
     },
     { attachmentName: "20260429-063200-image.jpg" }
   );
@@ -130,7 +156,7 @@ test("formats screenshot data URL captures as only the embedded attachment", () 
       title: "Screenshot Page",
       pageUrl: "https://example.com/page",
       imageUrl: "data:image/png;base64,AQID",
-      capturedAt: "2026-04-29T06:34:00.000Z"
+      capturedAt: localIso(2026, 4, 29, 6, 34)
     },
     { attachmentName: "20260429-063400-screenshot.png" }
   );
@@ -148,7 +174,7 @@ test("formats image download failure without dropping the source image URL", () 
       title: "Image Page",
       pageUrl: "https://example.com/page",
       imageUrl: "https://cdn.example.com/image.jpg",
-      capturedAt: "2026-04-29T06:33:00.000Z"
+      capturedAt: localIso(2026, 4, 29, 6, 33)
     },
     { imageError: "HTTP 403" }
   );
@@ -167,7 +193,7 @@ test("creates the daily inbox note when it does not exist", async () => {
       type: "url",
       title: "Example",
       pageUrl: "https://example.com",
-      capturedAt: "2026-04-29T08:00:00.000Z"
+      capturedAt: localIso(2026, 4, 29, 8, 0)
     },
     {
       vaultPath,
@@ -176,8 +202,8 @@ test("creates the daily inbox note when it does not exist", async () => {
     }
   );
 
-  assert.equal(result.notePath, path.join(vaultPath, "Inbox", "2026-04-29.md"));
-  assert.equal(await readFile(result.notePath, "utf8"), "## [Example](https://example.com)\n来源：https://example.com\n\n- 08:00 保存链接\n\n");
+  assert.equal(result.notePath, localDatePath(vaultPath, 2026, 4, 29));
+  assert.equal(await readFile(result.notePath, "utf8"), "- 08:00 [Example](https://example.com)\n\n");
 });
 
 test("appends to an existing daily inbox note without overwriting prior captures", async () => {
@@ -193,7 +219,7 @@ test("appends to an existing daily inbox note without overwriting prior captures
       type: "url",
       title: "First",
       pageUrl: "https://example.com/1",
-      capturedAt: "2026-04-29T08:00:00.000Z"
+      capturedAt: localIso(2026, 4, 29, 8, 0)
     },
     config
   );
@@ -203,19 +229,19 @@ test("appends to an existing daily inbox note without overwriting prior captures
       title: "Second",
       pageUrl: "https://example.com/2",
       text: "useful note",
-      capturedAt: "2026-04-29T08:01:00.000Z"
+      capturedAt: localIso(2026, 4, 29, 8, 1)
     },
     config
   );
 
-  const content = await readFile(path.join(vaultPath, "Inbox", "2026-04-29.md"), "utf8");
+  const content = await readFile(localDatePath(vaultPath, 2026, 4, 29), "utf8");
   assert.equal(
     content,
-    "## [First](https://example.com/1)\n来源：https://example.com/1\n\n- 08:00 保存链接\n\n## [Second](https://example.com/2)\n来源：https://example.com/2\n\n- 08:01 摘录\n\n```text\nuseful note\n```\n\n"
+    "- 08:00 [First](https://example.com/1)\n\n- 08:01 [Second](https://example.com/2)\n\n```text\nuseful note\n```\n\n"
   );
 });
 
-test("groups same-day captures from the same page URL under one source heading", async () => {
+test("appends same-day captures from the same page URL as timestamped source links", async () => {
   const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
   const config = {
     vaultPath,
@@ -228,7 +254,7 @@ test("groups same-day captures from the same page URL under one source heading",
       type: "url",
       title: "Example [Docs]",
       pageUrl: "https://example.com/docs",
-      capturedAt: "2026-04-29T08:00:00.000Z"
+      capturedAt: localIso(2026, 4, 29, 8, 0)
     },
     config
   );
@@ -238,20 +264,20 @@ test("groups same-day captures from the same page URL under one source heading",
       title: "Renamed Tab",
       pageUrl: "https://example.com/docs",
       text: "same page excerpt",
-      capturedAt: "2026-04-29T08:05:00.000Z"
+      capturedAt: localIso(2026, 4, 29, 8, 5)
     },
     config
   );
 
-  const content = await readFile(path.join(vaultPath, "Inbox", "2026-04-29.md"), "utf8");
+  const content = await readFile(localDatePath(vaultPath, 2026, 4, 29), "utf8");
   assert.equal(
     content,
-    "## [Example \\[Docs\\]](https://example.com/docs)\n来源：https://example.com/docs\n\n- 08:00 保存链接\n\n- 08:05 摘录\n\n```text\nsame page excerpt\n```\n\n"
+    "- 08:00 [Example \\[Docs\\]](https://example.com/docs)\n\n- 08:05 [Renamed Tab](https://example.com/docs)\n\n```text\nsame page excerpt\n```\n\n"
   );
-  assert.equal(content.match(/^## /gm)?.length, 1);
+  assert.equal(content.match(/^## /gm)?.length ?? 0, 0);
 });
 
-test("linkifies existing plain grouped headings before appending to the source group", () => {
+test("appends after existing grouped headings without rewriting previous content", () => {
   assert.equal(
     buildUpdatedNoteContent(
       "## Legacy \\[Docs\\]\n来源：https://example.com/docs\n\n- 08:00 保存链接\n\nmanual note\n",
@@ -260,15 +286,15 @@ test("linkifies existing plain grouped headings before appending to the source g
         title: "Renamed Tab",
         pageUrl: "https://example.com/docs",
         text: "same page excerpt",
-        capturedAt: "2026-04-29T08:05:00.000Z"
+        capturedAt: localIso(2026, 4, 29, 8, 5)
       },
-      "- 08:05 摘录\n\n```text\nsame page excerpt\n```\n"
+      "- 08:05 [Renamed Tab](https://example.com/docs)\n\n```text\nsame page excerpt\n```\n"
     ),
-    "## [Legacy \\[Docs\\]](https://example.com/docs)\n来源：https://example.com/docs\n\n- 08:00 保存链接\n\nmanual note\n\n- 08:05 摘录\n\n```text\nsame page excerpt\n```\n\n"
+    "## Legacy \\[Docs\\]\n来源：https://example.com/docs\n\n- 08:00 保存链接\n\nmanual note\n\n- 08:05 [Renamed Tab](https://example.com/docs)\n\n```text\nsame page excerpt\n```\n\n"
   );
 });
 
-test("migrates a legacy source link entry into the grouped source before appending", () => {
+test("keeps legacy source link entries and appends the next timestamped source link", () => {
   assert.equal(
     buildUpdatedNoteContent(
       "- 08:00 [Legacy \\[Docs\\]](https://example.com/docs)\n\nmanual note\n",
@@ -277,11 +303,11 @@ test("migrates a legacy source link entry into the grouped source before appendi
         title: "Renamed Tab",
         pageUrl: "https://example.com/docs",
         text: "same page excerpt",
-        capturedAt: "2026-04-29T08:05:00.000Z"
+        capturedAt: localIso(2026, 4, 29, 8, 5)
       },
-      "- 08:05 摘录\n\n```text\nsame page excerpt\n```\n"
+      "- 08:05 [Renamed Tab](https://example.com/docs)\n\n```text\nsame page excerpt\n```\n"
     ),
-    "## [Legacy \\[Docs\\]](https://example.com/docs)\n来源：https://example.com/docs\n\n- 08:00 保存链接\n\nmanual note\n\n- 08:05 摘录\n\n```text\nsame page excerpt\n```\n\n"
+    "- 08:00 [Legacy \\[Docs\\]](https://example.com/docs)\n\nmanual note\n\n- 08:05 [Renamed Tab](https://example.com/docs)\n\n```text\nsame page excerpt\n```\n\n"
   );
 });
 
@@ -300,21 +326,20 @@ test("serializes concurrent writes to the same daily note without dropping captu
           type: "url",
           title: `Page ${index}`,
           pageUrl: `https://example.com/${index}`,
-          capturedAt: `2026-04-29T08:0${index}:00.000Z`
+          capturedAt: localIso(2026, 4, 29, 8, index)
         },
         config
       )
     )
   );
 
-  const content = await readFile(path.join(vaultPath, "Inbox", "2026-04-29.md"), "utf8");
+  const content = await readFile(localDatePath(vaultPath, 2026, 4, 29), "utf8");
   for (let index = 0; index < 8; index += 1) {
-    assert.match(content, new RegExp(`## \\[Page ${index}\\]\\(https://example\\.com/${index}\\)`));
-    assert.match(content, new RegExp(`- 08:0${index} 保存链接`));
+    assert.match(content, new RegExp(`- 08:0${index} \\[Page ${index}\\]\\(https://example\\.com/${index}\\)`));
   }
 });
 
-test("keeps captures from the same URL on different UTC dates in separate daily notes", async () => {
+test("keeps captures from the same URL on different local dates in separate daily notes", async () => {
   const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
   const config = {
     vaultPath,
@@ -327,7 +352,7 @@ test("keeps captures from the same URL on different UTC dates in separate daily 
       type: "url",
       title: "Example",
       pageUrl: "https://example.com/docs",
-      capturedAt: "2026-04-29T23:59:00.000Z"
+      capturedAt: localIso(2026, 4, 29, 23, 59)
     },
     config
   );
@@ -336,18 +361,18 @@ test("keeps captures from the same URL on different UTC dates in separate daily 
       type: "url",
       title: "Example",
       pageUrl: "https://example.com/docs",
-      capturedAt: "2026-04-30T00:01:00.000Z"
+      capturedAt: localIso(2026, 4, 30, 0, 1)
     },
     config
   );
 
   assert.equal(
-    await readFile(path.join(vaultPath, "Inbox", "2026-04-29.md"), "utf8"),
-    "## [Example](https://example.com/docs)\n来源：https://example.com/docs\n\n- 23:59 保存链接\n\n"
+    await readFile(localDatePath(vaultPath, 2026, 4, 29), "utf8"),
+    "- 23:59 [Example](https://example.com/docs)\n\n"
   );
   assert.equal(
-    await readFile(path.join(vaultPath, "Inbox", "2026-04-30.md"), "utf8"),
-    "## [Example](https://example.com/docs)\n来源：https://example.com/docs\n\n- 00:01 保存链接\n\n"
+    await readFile(localDatePath(vaultPath, 2026, 4, 30), "utf8"),
+    "- 00:01 [Example](https://example.com/docs)\n\n"
   );
 });
 
@@ -358,7 +383,7 @@ test("closes an unclosed fenced code block before appending a new capture", () =
   );
 });
 
-test("closes an unclosed manual fenced block before creating a new grouped source", () => {
+test("closes an unclosed manual fenced block before appending a new source link", () => {
   assert.equal(
     buildUpdatedNoteContent(
       "manual paste\n```*\nnot closed",
@@ -366,11 +391,11 @@ test("closes an unclosed manual fenced block before creating a new grouped sourc
         type: "url",
         title: "Example",
         pageUrl: "https://example.com",
-        capturedAt: "2026-04-29T08:00:00.000Z"
+        capturedAt: localIso(2026, 4, 29, 8, 0)
       },
-      "- 08:00 保存链接\n"
+      "- 08:00 [Example](https://example.com)\n"
     ),
-    "manual paste\n```*\nnot closed\n\n```\n\n## [Example](https://example.com)\n来源：https://example.com\n\n- 08:00 保存链接\n\n"
+    "manual paste\n```*\nnot closed\n\n```\n\n- 08:00 [Example](https://example.com)\n\n"
   );
 });
 
@@ -390,7 +415,7 @@ test("decodes data URL images into attachments for screenshot captures", async (
       title: "Screenshot",
       pageUrl: "https://example.com/page",
       imageUrl: "data:image/png;base64,AQID",
-      capturedAt: "2026-04-29T08:04:00.000Z"
+      capturedAt: localIso(2026, 4, 29, 8, 4)
     },
     {
       vaultPath,
@@ -455,7 +480,7 @@ test("downloads a captured image into the configured attachments directory", asy
       title: "Image",
       pageUrl: "https://example.com/page",
       imageUrl: "https://cdn.example.com/image.png",
-      capturedAt: "2026-04-29T08:02:00.000Z"
+      capturedAt: localIso(2026, 4, 29, 8, 2)
     },
     {
       vaultPath,
@@ -486,7 +511,7 @@ test("rejects inbox paths that escape the configured vault", async () => {
           type: "url",
           title: "Bad",
           pageUrl: "https://example.com",
-          capturedAt: "2026-04-29T08:03:00.000Z"
+          capturedAt: localIso(2026, 4, 29, 8, 3)
         },
         {
           vaultPath,

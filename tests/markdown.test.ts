@@ -3,15 +3,37 @@ import test from "node:test";
 
 import { formatCaptureEntry } from "../src/host/markdown.ts";
 
+function localIso(year: number, month: number, day: number, hour: number, minute: number, second = 0): string {
+  return new Date(year, month - 1, day, hour, minute, second).toISOString();
+}
+
+function localTime(isoDate: string): string {
+  const date = new Date(isoDate);
+  return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
+}
+
 test("formats a captured URL as one timestamped markdown list item", () => {
   const entry = formatCaptureEntry({
     type: "url",
     title: "Example [Docs]",
     pageUrl: "https://example.com/docs",
-    capturedAt: "2026-04-29T06:30:00.000Z"
+    capturedAt: localIso(2026, 4, 29, 6, 30)
   });
 
   assert.equal(entry, "- 06:30 [Example \\[Docs\\]](https://example.com/docs)\n");
+});
+
+test("formats capture time in the host local timezone", () => {
+  const capturedAt = new Date(Date.UTC(2026, 3, 29, 6, 30)).toISOString();
+
+  const entry = formatCaptureEntry({
+    type: "url",
+    title: "Local Time",
+    pageUrl: "https://example.com/local-time",
+    capturedAt
+  });
+
+  assert.equal(entry, `- ${localTime(capturedAt)} [Local Time](https://example.com/local-time)\n`);
 });
 
 test("formats selected text as an Obsidian fenced code block under the source link", () => {
@@ -21,7 +43,7 @@ test("formats selected text as an Obsidian fenced code block under the source li
     pageUrl: "https://example.com/a",
     text: "first line\n  second line",
     markdown: "## Heading\n\n**first line**\n\nsecond line",
-    capturedAt: "2026-04-29T06:31:00.000Z"
+    capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
   assert.equal(
@@ -36,7 +58,7 @@ test("uses a longer code fence when selected text already contains backtick fenc
     title: "Article",
     pageUrl: "https://example.com/a",
     text: "before\n```\ninside\n```\nafter",
-    capturedAt: "2026-04-29T06:31:00.000Z"
+    capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
   assert.equal(entry, "- 06:31 [Article](https://example.com/a)\n\n````text\nbefore\n```\ninside\n```\nafter\n````\n");
@@ -49,7 +71,7 @@ test("uses explicit selection code language when provided by the browser context
     pageUrl: "https://example.com/code",
     text: "const value = 1;",
     codeLanguage: "javascript",
-    capturedAt: "2026-04-29T06:31:00.000Z"
+    capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
   assert.equal(entry, "- 06:31 [Code](https://example.com/code)\n\n```js\nconst value = 1;\n```\n");
@@ -61,7 +83,7 @@ test("detects JSON selections and labels the code block", () => {
     title: "JSON",
     pageUrl: "https://example.com/json",
     text: '{\n  "name": "yishan",\n  "enabled": true\n}',
-    capturedAt: "2026-04-29T06:31:00.000Z"
+    capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
   assert.equal(entry, "- 06:31 [JSON](https://example.com/json)\n\n```json\n{\n  \"name\": \"yishan\",\n  \"enabled\": true\n}\n```\n");
@@ -73,21 +95,21 @@ test("detects common code-like selections before falling back to text", () => {
     title: "HTML",
     pageUrl: "https://example.com/html",
     text: '<section class="hero">\n  <h1>移山</h1>\n</section>',
-    capturedAt: "2026-04-29T06:31:00.000Z"
+    capturedAt: localIso(2026, 4, 29, 6, 31)
   });
   const pythonEntry = formatCaptureEntry({
     type: "selection",
     title: "Python",
     pageUrl: "https://example.com/python",
     text: "def clip(text):\n    return text.strip()",
-    capturedAt: "2026-04-29T06:32:00.000Z"
+    capturedAt: localIso(2026, 4, 29, 6, 32)
   });
   const textEntry = formatCaptureEntry({
     type: "selection",
     title: "Note",
     pageUrl: "https://example.com/note",
     text: "这是一段普通摘录，不应该被误判为代码。",
-    capturedAt: "2026-04-29T06:33:00.000Z"
+    capturedAt: localIso(2026, 4, 29, 6, 33)
   });
 
   assert.match(htmlEntry, /\n```html\n/);
@@ -102,7 +124,7 @@ test("formats a downloaded image as an embedded Obsidian attachment with origina
       title: "Image Page",
       pageUrl: "https://example.com/page",
       imageUrl: "https://cdn.example.com/image.jpg",
-      capturedAt: "2026-04-29T06:32:00.000Z"
+      capturedAt: localIso(2026, 4, 29, 6, 32)
     },
     { attachmentName: "20260429-063200-image.jpg" }
   );
@@ -120,7 +142,7 @@ test("formats image download failure without dropping the source image URL", () 
       title: "Image Page",
       pageUrl: "https://example.com/page",
       imageUrl: "https://cdn.example.com/image.jpg",
-      capturedAt: "2026-04-29T06:33:00.000Z"
+      capturedAt: localIso(2026, 4, 29, 6, 33)
     },
     { imageError: "HTTP 403" }
   );

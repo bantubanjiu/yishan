@@ -43,7 +43,7 @@ Windows + Chrome/Edge 本地网页采集器：保存 URL、选中文本、图片
 | 本地阅读器支持 | 支持保存 `file://` 本地页面/文本链接；Chrome PDF 阅读器可保存文件链接，选区能力受浏览器限制。 |
 | 本地静默写入 | Chrome/Edge 扩展通过 Native Messaging 调用本地 Node Host 写入 Vault。 |
 | Popup 设置 | 左键点击插件图标打开新 UI，可保存当前页/当前窗口/截图，并配置 Vault、Inbox、附件目录、选区触发键和是否启用拖选自动保存。 |
-| 同源分组追加 | 同一天同一链接的文本、图片、截图和 URL 保存在同一个来源分组下，不重复新起条目。 |
+| 本地时间追加 | 按本机本地日期写入当天日记，每条记录保留 `- HH:mm [标题](链接)` 来源标题格式。 |
 | 追加保护 | 写入前处理空行和未闭合代码块，降低破坏当天日记的概率。 |
 
 ## 架构图
@@ -78,7 +78,7 @@ sequenceDiagram
     H->>H: 下载 URL 或解码 data URL
     H->>V: 写入附件文件
   end
-  H->>V: 按当天 + 来源 URL 分组追加 Markdown
+  H->>V: 按本机当天追加 Markdown
   H-->>E: 返回写入结果
   E-->>U: 系统通知保存成功/失败
 ```
@@ -88,19 +88,13 @@ sequenceDiagram
 ### URL
 
 ```markdown
-## [页面标题](https://example.com/article)
-来源：https://example.com/article
-
-- 08:30 保存链接
+- 08:30 [页面标题](https://example.com/article)
 ```
 
 ### 选中文本
 
 ````markdown
-## [页面标题](https://example.com/article)
-来源：https://example.com/article
-
-- 08:31 摘录
+- 08:31 [页面标题](https://example.com/article)
 
 ```json
 {
@@ -115,10 +109,7 @@ sequenceDiagram
 ### 图片或截图
 
 ```markdown
-## [页面标题](https://example.com/article)
-来源：https://example.com/article
-
-- 08:32 图片
+- 08:32 [页面标题](https://example.com/article)
   ![[20260429-083200-a1b2c3d4.png]]
   来源图片：https://example.com/image.png
 ```
@@ -234,13 +225,13 @@ node --check extension\background.js
 
 ## 版本记录
 
-- 当前版本：`0.2.0`
+- 当前版本：`0.2.1`
 - 详细更新历史见 [`版本记录README.md`](./版本记录README.md)。
 
 ## 路线图
 
 - [ ] 支持更多截图模式，例如整页长截图。
-- [ ] 支持本地时区日期写入，而不是 UTC 日期。
+- [x] 支持本地时区日期写入，而不是 UTC 日期。
 - [ ] 增加一键打开当天 Inbox 的入口。
 - [ ] 改进 Chrome PDF 阅读器的正文文本抽取能力。
 - [ ] 增加可选的 Markdown 富文本保存模式。

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { formatCaptureGroupEntry, formatCaptureSourceHeading, formatCaptureSourceHeadingFromTitle } from "./markdown.ts";
+import { formatCaptureEntry } from "./markdown.ts";
 import type { AppConfig, CaptureMessage } from "./types.ts";
 
 export type FetchBinaryResult = {
@@ -48,7 +48,7 @@ export async function writeCaptureToVault(
     }
   }
 
-  const entry = formatCaptureGroupEntry(message, { attachmentName, imageError });
+  const entry = formatCaptureEntry(message, { attachmentName, imageError });
   await withFileLock(`${notePath}.lock`, async () => {
     const existingContent = await readExistingFile(notePath);
     await writeFile(notePath, buildUpdatedNoteContent(existingContent, message, entry), "utf8");
@@ -56,20 +56,9 @@ export async function writeCaptureToVault(
   return { notePath, attachmentName };
 }
 
-export function buildUpdatedNoteContent(existingContent: string, message: CaptureMessage, entry: string): string {
-  let normalizedExisting = existingContent.replace(/\r\n?/g, "\n");
-  normalizedExisting = migrateLegacySourceEntries(normalizedExisting, message.pageUrl);
-  normalizedExisting = linkifySourceGroupHeading(normalizedExisting, message.pageUrl, message.title);
-
-  const group = findSourceGroup(normalizedExisting, message.pageUrl);
-
-  if (!group) {
-    return normalizedExisting + buildAppendText(normalizedExisting, `${formatCaptureSourceHeading(message)}${entry}`);
-  }
-
-  const beforeGroupEnd = normalizedExisting.slice(0, group.end);
-  const afterGroupEnd = normalizedExisting.slice(group.end);
-  return beforeGroupEnd + buildAppendText(beforeGroupEnd.slice(group.start), entry) + afterGroupEnd;
+export function buildUpdatedNoteContent(existingContent: string, _message: CaptureMessage, entry: string): string {
+  const normalizedExisting = existingContent.replace(/\r\n?/g, "\n");
+  return normalizedExisting + buildAppendText(normalizedExisting, entry);
 }
 
 export function buildAppendText(existingContent: string, entry: string): string {
@@ -87,101 +76,6 @@ export function buildAppendText(existingContent: string, entry: string): string 
 
 function buildFenceClosureText(markdown: string): string {
   return hasUnclosedFence(markdown) ? "```\n\n" : "";
-}
-
-function migrateLegacySourceEntries(markdown: string, pageUrl: string): string {
-  const entries = collectLegacySourceEntries(markdown, pageUrl);
-  if (entries.length === 0) {
-    return markdown;
-  }
-
-  const withoutLegacy = removeRanges(markdown, entries);
-  const legacyBlock = entries.map((entry) => entry.entry.trimEnd()).join("\n\n") + "\n";
-  const existingGroup = findSourceGroup(withoutLegacy, pageUrl);
-
-  if (existingGroup) {
-    const beforeGroupEnd = withoutLegacy.slice(0, existingGroup.end);
-    const afterGroupEnd = withoutLegacy.slice(existingGroup.end);
-    return beforeGroupEnd + buildAppendText(beforeGroupEnd.slice(existingGroup.start), legacyBlock) + afterGroupEnd;
-  }
-
-  const insertAt = entries[0].start;
-  const before = withoutLegacy.slice(0, insertAt);
-  const after = withoutLegacy.slice(insertAt);
-  const separator = before.length > 0 && !before.endsWith("\n\n") ? (before.endsWith("\n") ? "\n" : "\n\n") : "";
-  const heading = formatCaptureSourceHeadingFromTitle(entries[0].title, pageUrl);
-  return before + separator + buildFenceClosureText(before) + heading + legacyBlock + "\n" + after;
-}
-
-function collectLegacySourceEntries(markdown: string, pageUrl: string): Array<{ start: number; end: number; title: string; entry: string }> {
-  const legacyPattern = /^- ([0-2]\d:[0-5]\d) \[((?:\\.|[^\]\\])*)\]\(([^)\n]+)\)\n?/gm;
-  const entries = [];
-  for (const match of markdown.matchAll(legacyPattern)) {
-    if (match[3] !== pageUrl || match.index === undefined) {
-      continue;
-    }
-
-    let end = match.index + match[0].length;
-    if (markdown[end] === "\n") {
-      end += 1;
-    }
-
-    entries.push({
-      start: match.index,
-      end,
-      title: unescapeMarkdownLinkText(match[2]),
-      entry: `- ${match[1]} 保存链接\n`
-    });
-  }
-
-  return entries;
-}
-
-function removeRanges(markdown: string, ranges: Array<{ start: number; end: number }>): string {
-  let result = "";
-  let cursor = 0;
-  for (const range of ranges) {
-    result += markdown.slice(cursor, range.start);
-    cursor = range.end;
-  }
-  return result + markdown.slice(cursor);
-}
-
-function linkifySourceGroupHeading(markdown: string, pageUrl: string, fallbackTitle: string): string {
-  const headingPattern = /^## (.*)\n来源：(.+)$/gm;
-  for (const match of markdown.matchAll(headingPattern)) {
-    if (match[2] !== pageUrl || match.index === undefined) {
-      continue;
-    }
-    if (/^\[.*\]\([^)\n]+\)$/.test(match[1])) {
-      return markdown;
-    }
-
-    const title = unescapeMarkdownText(match[1]) || fallbackTitle;
-    const replacement = formatCaptureSourceHeadingFromTitle(title, pageUrl).trimEnd();
-    return markdown.slice(0, match.index) + replacement + markdown.slice(match.index + match[0].length);
-  }
-
-  return markdown;
-}
-
-function findSourceGroup(markdown: string, pageUrl: string): { start: number; end: number } | undefined {
-  const headingPattern = /^## .*\n来源：(.+)$/gm;
-  for (const match of markdown.matchAll(headingPattern)) {
-    if (match[1] !== pageUrl || match.index === undefined) {
-      continue;
-    }
-
-    const start = match.index;
-    const searchFrom = start + match[0].length;
-    const nextHeadingIndex = markdown.slice(searchFrom).search(/^## /m);
-    return {
-      start,
-      end: nextHeadingIndex === -1 ? markdown.length : searchFrom + nextHeadingIndex
-    };
-  }
-
-  return undefined;
 }
 
 async function readExistingFile(filePath: string): Promise<string> {
@@ -239,14 +133,6 @@ function hasUnclosedFence(markdown: string): boolean {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
-}
-
-function unescapeMarkdownLinkText(value: string): string {
-  return value.replace(/\\([\\[\]])/g, "$1");
-}
-
-function unescapeMarkdownText(value: string): string {
-  return unescapeMarkdownLinkText(value).replace(/\\#/g, "#");
 }
 
 function resolveInsideVault(vaultPath: string, relativePath: string, label: string): string {
@@ -333,7 +219,7 @@ function formatDate(isoDate: string): string {
   if (Number.isNaN(date.getTime())) {
     throw new Error(`Invalid capturedAt timestamp: ${isoDate}`);
   }
-  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 function compactTimestamp(isoDate: string): string {
@@ -341,9 +227,9 @@ function compactTimestamp(isoDate: string): string {
   if (Number.isNaN(date.getTime())) {
     throw new Error(`Invalid capturedAt timestamp: ${isoDate}`);
   }
-  return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}-${pad(date.getUTCHours())}${pad(
-    date.getUTCMinutes()
-  )}${pad(date.getUTCSeconds())}`;
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(
+    date.getSeconds()
+  )}`;
 }
 
 function pad(value: number): string {
