@@ -1,17 +1,11 @@
-import { createHash } from "node:crypto";
 import { mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { formatCaptureEntry } from "./markdown.ts";
+import { errorMessage, isNodeError } from "./errors.ts";
+import { buildAttachmentName, formatDate } from "./filename.ts";
+import { defaultFetchBinary, type FetchBinaryResult, validateDownloadedImage } from "./image-downloader.ts";
+import { formatCaptureEntry } from "./markdown-renderer.ts";
 import type { AppConfig, CaptureMessage } from "./types.ts";
-
-const IMAGE_DOWNLOAD_TIMEOUT_MS = 10_000;
-const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-
-export type FetchBinaryResult = {
-  bytes: Uint8Array;
-  contentType?: string;
-};
 
 export type VaultWriterDeps = {
   fetchBinary?: (url: string) => Promise<FetchBinaryResult>;
@@ -48,7 +42,7 @@ export async function writeCaptureToVault(
       attachmentName = buildAttachmentName(message, downloaded.contentType);
       await writeFile(path.join(attachmentsPath, attachmentName), downloaded.bytes, { flag: "wx" });
     } catch (error) {
-      imageError = error instanceof Error ? error.message : String(error);
+      imageError = errorMessage(error);
     }
   }
 
@@ -135,10 +129,6 @@ function hasUnclosedFence(markdown: string): boolean {
   return Boolean(matches && matches.length % 2 === 1);
 }
 
-function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error;
-}
-
 function resolveInsideVault(vaultPath: string, relativePath: string, label: string): string {
   if (!relativePath || path.isAbsolute(relativePath)) {
     throw new Error(`${label} must be a relative path inside the vault`);
@@ -150,140 +140,6 @@ function resolveInsideVault(vaultPath: string, relativePath: string, label: stri
     throw new Error(`${label} must stay inside the vault`);
   }
   return resolved;
-}
-
-async function defaultFetchBinary(url: string): Promise<FetchBinaryResult> {
-  if (url.startsWith("data:")) {
-    return decodeDataUrl(url);
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), IMAGE_DOWNLOAD_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const contentType = response.headers.get("content-type") ?? undefined;
-    if (!isImageContentType(contentType)) {
-      throw new Error("响应不是图片内容");
-    }
-
-    const contentLength = Number(response.headers.get("content-length") ?? "");
-    if (Number.isFinite(contentLength) && contentLength > MAX_IMAGE_BYTES) {
-      throw new Error("图片体积超过 20MB");
-    }
-
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > MAX_IMAGE_BYTES) {
-      throw new Error("图片体积超过 20MB");
-    }
-
-    return { bytes, contentType };
-  } catch (error) {
-    if (isAbortError(error)) {
-      throw new Error("图片下载超时");
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-function decodeDataUrl(url: string): FetchBinaryResult {
-  const match = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(url);
-  if (!match) {
-    throw new Error("Invalid data URL");
-  }
-
-  const [, contentType, base64Flag, payload] = match;
-  if (!isImageContentType(contentType)) {
-    throw new Error("Invalid data URL");
-  }
-  const bytes = base64Flag
-    ? Buffer.from(payload, "base64")
-    : Buffer.from(decodeURIComponent(payload), "utf8");
-  if (bytes.byteLength > MAX_IMAGE_BYTES) {
-    throw new Error("图片体积超过 20MB");
-  }
-
-  return {
-    bytes,
-    contentType
-  };
-}
-
-function validateDownloadedImage(downloaded: FetchBinaryResult): void {
-  if (!isImageContentType(downloaded.contentType)) {
-    throw new Error("响应不是图片内容");
-  }
-  if (downloaded.bytes.byteLength > MAX_IMAGE_BYTES) {
-    throw new Error("图片体积超过 20MB");
-  }
-}
-
-function isImageContentType(contentType?: string): boolean {
-  return typeof contentType === "string" && contentType.split(";")[0].trim().toLowerCase().startsWith("image/");
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
-}
-
-function buildAttachmentName(message: Extract<CaptureMessage, { type: "image" }>, contentType?: string): string {
-  const extension = extensionFor(message.imageUrl, contentType);
-  const stamp = compactTimestamp(message.capturedAt);
-  const hash = createHash("sha256").update(`${message.imageUrl}\0${message.capturedAt}`).digest("hex").slice(0, 8);
-  return `${stamp}-${hash}${extension}`;
-}
-
-function extensionFor(imageUrl: string, contentType?: string): string {
-  const fromType = contentType?.split(";")[0]?.trim().toLowerCase();
-  const byContentType: Record<string, string> = {
-    "image/jpeg": ".jpg",
-    "image/jpg": ".jpg",
-    "image/png": ".png",
-    "image/gif": ".gif",
-    "image/webp": ".webp",
-    "image/svg+xml": ".svg",
-    "image/avif": ".avif"
-  };
-  if (fromType && byContentType[fromType]) {
-    return byContentType[fromType];
-  }
-
-  try {
-    const ext = path.extname(new URL(imageUrl).pathname).toLowerCase();
-    if (/^\.[a-z0-9]{1,8}$/.test(ext)) {
-      return ext;
-    }
-  } catch {
-    // Fall through to a safe default.
-  }
-  return ".bin";
-}
-
-function formatDate(isoDate: string): string {
-  const date = new Date(isoDate);
-  if (Number.isNaN(date.getTime())) {
-    throw new Error(`Invalid capturedAt timestamp: ${isoDate}`);
-  }
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-function compactTimestamp(isoDate: string): string {
-  const date = new Date(isoDate);
-  if (Number.isNaN(date.getTime())) {
-    throw new Error(`Invalid capturedAt timestamp: ${isoDate}`);
-  }
-  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(
-    date.getSeconds()
-  )}`;
-}
-
-function pad(value: number): string {
-  return value.toString().padStart(2, "0");
 }
 
 function validateCapture(message: CaptureMessage): void {

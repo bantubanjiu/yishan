@@ -22,12 +22,18 @@ export type CaptureMessage =
       capturedAt: string;
     };
 
+export type BatchSaveTabsRequest = {
+  type: "batch-save-tabs";
+  tabs: Extract<CaptureMessage, { type: "url" }>[];
+};
+
 export type AppConfig = {
   vaultPath: string;
   inboxDir: string;
   attachmentsDir: string;
   selectionModifier?: string;
   selectionGestureEnabled?: boolean;
+  selectionSaveMode?: "plain" | "rich";
 };
 
 export type HostResponse =
@@ -39,6 +45,20 @@ export type HostResponse =
   | {
       ok: true;
       path: string;
+    }
+  | {
+      ok: true;
+      saved: number;
+      failed: number;
+      failures: Array<{
+        title: string;
+        pageUrl: string;
+        error: string;
+      }>;
+    }
+  | {
+      ok: true;
+      config: AppConfig;
     }
   | {
       ok: false;

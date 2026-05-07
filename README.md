@@ -34,11 +34,12 @@ Windows/macOS + Chrome/Edge 本地网页采集器：保存 URL、选中文本、
 | 能力 | 说明 |
 | --- | --- |
 | 保存页面 URL | 页面空白处右键、Popup 或快捷键，一键追加当前页面标题和链接。 |
-| 保存选中文本 | 选中文本后右键保存；也可启用长按 Alt/Ctrl/Shift/Meta 后拖选自动保存。 |
+| 保存选中文本 | 选中文本后右键保存；可在“安全纯文本”和“富 Markdown”模式间切换；也可启用长按 Alt/Ctrl/Shift/Meta 后拖选自动保存。 |
 | 代码块识别 | 优先读取网页代码块语言，并自动识别 JSON/HTML/CSS/JS/TS/Python/Shell/Markdown，失败回退 `text`。 |
 | 保存图片 | 图片右键保存；Native Host 校验图片类型、10 秒超时、20MB 上限，失败时仍写入 Markdown 失败原因。 |
-| 框选截图 | 右键、Popup 或快捷键触发后拖拽选择可见区域，裁剪为 PNG 附件。 |
-| 多标签快速保存 | Popup 或快捷键保存当前窗口全部普通 `http/https/file` 标签页，跳过浏览器内部页。 |
+| 框选/视口截图 | 右键、Popup 或快捷键触发后拖拽选择可见区域；Popup 也可直接保存当前视口截图。 |
+| 多标签快速保存 | Popup 或快捷键用单次 Native Message 保存当前窗口全部普通 `http/https/file` 标签页，跳过浏览器内部页。 |
+| 本地路径打开 | Popup 可打开今天 Inbox、附件目录、Vault 根目录和配置文件。 |
 | 拖选生命周期同步 | 启用拖选保存后，扩展会在标签切换、页面刷新、窗口重新聚焦后同步注入状态。 |
 | 本地阅读器支持 | 支持保存 `file://` 本地页面/文本链接；Chrome PDF 阅读器可保存文件链接，选区能力受浏览器限制。 |
 | Popup 设置 | 配置 Vault、Inbox、附件目录、拖选触发键和是否启用拖选自动保存。 |
@@ -132,17 +133,19 @@ bash ./scripts/install-native-host-macos.sh --extension-id "<扩展ID>" --snapsh
 | `inboxDir` | `Inbox` | 日记 Markdown 写入目录，必须位于 Vault 内。 |
 | `attachmentsDir` | `Inbox/attachments` | 图片/截图附件目录，必须位于 Vault 内。 |
 | `selectionModifier` | `Alt` | 拖选自动保存触发键，可选 `Alt`/`Ctrl`/`Shift`/`Meta`。 |
+| `selectionSaveMode` | `plain` | 选中文本保存模式：`plain` 为安全纯文本，`rich` 为富 Markdown，失败时回退纯文本。 |
 | `selectionGestureEnabled` | `false` | 是否启用长按触发键后拖选自动保存。 |
 
 ## 使用方式
 
-- 左键点击插件图标：打开 Popup，可保存当前页、保存当前窗口全部普通标签页、框选截图、修改路径和选区触发键。
+- 左键点击插件图标：打开 Popup，可保存当前页、保存当前窗口全部普通标签页、框选截图、当前视口截图、PDF 链接、修改路径和选区触发键。
+- Popup 的路径按钮可打开今天 Inbox、附件目录、Vault 根目录和配置文件；路径不存在或越界时 Native Host 会返回明确错误。
 - 页面空白处右键：保存当前页面 URL。
-- 选中文本右键：保存选中文本和来源链接，并插入自动适配语言的代码块。
+- 选中文本右键：保存选中文本和来源链接；默认用安全纯文本，切换到富 Markdown 后会尽量保留标题、列表、链接、引用、代码块和图片，失败时回退纯文本。
 - 长按 Alt 后拖选文本：需先在 Popup/选项页启用；显示蓝色高亮框，松开鼠标后自动保存选区；触发键可改为 Ctrl/Shift/Meta。
 - 图片上右键：下载图片并保存来源；非图片响应、超时或超过 20MB 会记录失败原因，不阻断正文保存。
 - 页面右键或快捷键 `Alt+Shift+X`：框选截图并保存。
-- 快捷键 `Alt+Shift+S`：保存当前窗口全部普通 `http/https/file` 标签。快捷键可在 `chrome://extensions/shortcuts` 中自定义。
+- 快捷键 `Alt+Shift+S`：用单次 Native Message 保存当前窗口全部普通 `http/https/file` 标签。快捷键可在 `chrome://extensions/shortcuts` 中自定义。
 - 修改 Vault 路径时点击“选择文件夹”，Native Host 会弹出系统文件夹选择器。
 
 ## 常见问题
@@ -196,7 +199,15 @@ bash ./scripts/diagnose-macos.sh "<扩展ID>"
 ```text
 .
 ├─ extension/                 # Chrome/Edge 扩展
-│  ├─ background.js            # 右键菜单、Popup 消息、快捷键、批量采集、截图、Native Messaging
+│  ├─ background.js            # 服务工作线程入口和事件注册
+│  ├─ context-menu.js          # 右键菜单
+│  ├─ commands.js              # 快捷键
+│  ├─ native-client.js         # Native Messaging 客户端
+│  ├─ screenshot.js            # 框选/视口截图
+│  ├─ selection-markdown.js    # 选区纯文本/富 Markdown 提取
+│  ├─ gesture.js               # 长按拖选自动保存
+│  ├─ batch-save.js            # 单次请求批量保存标签
+│  ├─ config-client.js         # 扩展端配置规范化
 │  ├─ popup.html/css/js        # 插件左键 Popup UI
 │  ├─ options.html/css/js      # 设置页
 │  ├─ screenshot-crop.js       # 截图选区坐标归一化
@@ -209,10 +220,16 @@ bash ./scripts/diagnose-macos.sh "<扩展ID>"
 ├─ src/host/                   # Node Native Host
 │  ├─ index.ts                 # Native Messaging stdin/stdout 入口
 │  ├─ native-protocol.ts       # 4 字节长度头协议编解码
-│  ├─ host-request.ts          # 请求 schema 校验与分发
+│  ├─ host-request.ts          # 请求分发
+│  ├─ request-schema.ts        # 请求 schema 校验
 │  ├─ config.ts                # 本地配置读写
 │  ├─ markdown.ts              # Markdown 格式化
-│  └─ vault-writer.ts          # Vault 写入、附件处理、图片安全边界
+│  ├─ markdown-renderer.ts     # Markdown 渲染出口
+│  ├─ image-downloader.ts      # 图片下载安全边界
+│  ├─ filename.ts              # 日期和附件文件名
+│  ├─ diagnostics.ts           # 诊断共享信息
+│  ├─ errors.ts                # 错误工具
+│  └─ vault-writer.ts          # Vault 写入
 ├─ tests/                      # 无子进程派生的测试入口和用例
 ├─ README.md
 └─ 版本记录README.md
@@ -232,18 +249,19 @@ node tests\run-tests.mjs
 node --check extension\background.js
 ```
 
-GitHub Actions 会在 Windows/macOS + Node 24.x 上执行 `npm test` 和 `npm run check`。
+GitHub Actions 会在 Windows/macOS + Node 24.x/26.x 上执行 `npm test` 和 `npm run check`。
+
+打包本地 release zip：
+
+```powershell
+npm run release:zip
+```
 
 ## Roadmap
 
-- [ ] 拆分 `extension/background.js` 为更小的功能模块。
-- [ ] 拆分 Host 端下载、渲染、诊断等模块。
-- [ ] 批量保存改为单次 Native Message 请求，减少 Native Host 启动次数。
-- [ ] 增加一键打开当天 Inbox、附件目录、Vault 根目录和配置文件的入口。
-- [ ] 增加可选的 Markdown 富文本保存模式。
-- [ ] 支持更多截图模式，例如当前视口整页截图、长截图。
+- [ ] 支持滚动长截图和指定 DOM 区域截图。
 - [ ] 改进 Chrome PDF 阅读器的正文文本抽取能力。
-- [ ] 打包 release zip 和升级脚本。
+- [ ] 自动创建 GitHub Release 和升级脚本。
 
 ## Changelog
 

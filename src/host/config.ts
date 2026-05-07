@@ -8,6 +8,7 @@ const APP_DIR = path.join(homedir(), ".obsidian-web-clipper-local");
 export const DEFAULT_CONFIG_PATH = path.join(APP_DIR, "config.json");
 export const DEFAULT_SELECTION_MODIFIER = "Alt";
 export const DEFAULT_SELECTION_GESTURE_ENABLED = false;
+export const DEFAULT_SELECTION_SAVE_MODE = "plain";
 
 export async function loadConfig(configPath = DEFAULT_CONFIG_PATH): Promise<AppConfig> {
   const raw = await readFile(configPath, "utf8");
@@ -40,6 +41,14 @@ export function validateConfig(value: unknown): asserts value is AppConfig {
   if ("selectionGestureEnabled" in value && typeof value.selectionGestureEnabled !== "boolean") {
     throw new Error("Config field selectionGestureEnabled must be a boolean");
   }
+  if (
+    "selectionSaveMode" in value &&
+    value.selectionSaveMode !== undefined &&
+    value.selectionSaveMode !== "plain" &&
+    value.selectionSaveMode !== "rich"
+  ) {
+    throw new Error("Config field selectionSaveMode must be plain or rich");
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -50,6 +59,7 @@ function withConfigDefaults(config: AppConfig): AppConfig {
   return {
     ...config,
     selectionModifier: config.selectionModifier ?? DEFAULT_SELECTION_MODIFIER,
-    selectionGestureEnabled: config.selectionGestureEnabled ?? DEFAULT_SELECTION_GESTURE_ENABLED
+    selectionGestureEnabled: config.selectionGestureEnabled ?? DEFAULT_SELECTION_GESTURE_ENABLED,
+    selectionSaveMode: config.selectionSaveMode ?? DEFAULT_SELECTION_SAVE_MODE
   };
 }

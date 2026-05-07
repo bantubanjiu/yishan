@@ -458,7 +458,8 @@ test("loads older config files with the default selection modifier", async () =>
     inboxDir: "Inbox",
     attachmentsDir: "Inbox/attachments",
     selectionModifier: "Alt",
-    selectionGestureEnabled: false
+    selectionGestureEnabled: false,
+    selectionSaveMode: "plain"
   });
 });
 
@@ -690,7 +691,7 @@ test("host request handler can save and read configuration", async () => {
   assert.deepEqual(await handleHostRequest({ type: "set-config", config }, configPath), { ok: true });
   assert.deepEqual(await handleHostRequest({ type: "get-config" }, configPath), {
     ok: true,
-    config: { ...config, selectionModifier: "Alt", selectionGestureEnabled: false }
+    config: { ...config, selectionModifier: "Alt", selectionGestureEnabled: false, selectionSaveMode: "plain" }
   });
 });
 
@@ -837,6 +838,145 @@ test("host request schema rejects invalid image URLs and invalid config payloads
   );
 });
 
+test("batch-save-tabs schema sanitizes tabs and host saves each valid tab in one request", async () => {
+  const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
+  const configPath = path.join(await mkdtemp(path.join(tmpdir(), "clipper-config-")), "config.json");
+  await writeFile(
+    configPath,
+    JSON.stringify({
+      vaultPath,
+      inboxDir: "Inbox",
+      attachmentsDir: "Inbox/attachments"
+    }),
+    "utf8"
+  );
+
+  const request = assertHostRequest({
+    type: "batch-save-tabs",
+    tabs: [
+      {
+        title: "Page A",
+        pageUrl: "https://example.com/a",
+        capturedAt: "2026-05-07T00:00:00.000Z",
+        ignored: true
+      },
+      {
+        title: "",
+        pageUrl: "file:///D:/docs/b.pdf",
+        capturedAt: "2026-05-07T00:00:01.000Z"
+      }
+    ],
+    ignored: true
+  });
+
+  assert.deepEqual(request, {
+    type: "batch-save-tabs",
+    tabs: [
+      {
+        type: "url",
+        title: "Page A",
+        pageUrl: "https://example.com/a",
+        capturedAt: "2026-05-07T00:00:00.000Z"
+      },
+      {
+        type: "url",
+        title: "Untitled",
+        pageUrl: "file:///D:/docs/b.pdf",
+        capturedAt: "2026-05-07T00:00:01.000Z"
+      }
+    ]
+  });
+
+  const response = await handleHostRequest(request, configPath);
+
+  assert.deepEqual(response, { ok: true, saved: 2, failed: 0, failures: [] });
+  const content = await readFile(localDatePath(vaultPath, 2026, 5, 7), "utf8");
+  assert.match(content, /\[Page A\]\(https:\/\/example\.com\/a\)/);
+  assert.match(content, /\[Untitled\]\(file:\/\/\/D:\/docs\/b\.pdf\)/);
+});
+
+test("batch-save-tabs returns per-tab failures without blocking successful saves", async () => {
+  const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
+  const configPath = path.join(await mkdtemp(path.join(tmpdir(), "clipper-config-")), "config.json");
+  await writeFile(
+    configPath,
+    JSON.stringify({
+      vaultPath,
+      inboxDir: "Inbox",
+      attachmentsDir: "Inbox/attachments"
+    }),
+    "utf8"
+  );
+
+  const response = await handleHostRequest(
+    {
+      type: "batch-save-tabs",
+      tabs: [
+        {
+          type: "url",
+          title: "Good",
+          pageUrl: "https://example.com/good",
+          capturedAt: "2026-05-07T00:00:00.000Z"
+        },
+        {
+          type: "url",
+          title: "Bad",
+          pageUrl: "https://example.com/bad",
+          capturedAt: "not-a-date"
+        }
+      ]
+    },
+    configPath
+  );
+
+  assert.equal(response.ok, true);
+  assert.equal(response.saved, 1);
+  assert.equal(response.failed, 1);
+  assert.deepEqual(response.failures, [
+    {
+      title: "Bad",
+      pageUrl: "https://example.com/bad",
+      error: "Invalid capturedAt timestamp: not-a-date"
+    }
+  ]);
+  assert.match(await readFile(localDatePath(vaultPath, 2026, 5, 7), "utf8"), /\[Good\]\(https:\/\/example\.com\/good\)/);
+});
+
+test("host request handler opens only configured safe locations", async () => {
+  const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
+  const configPath = path.join(await mkdtemp(path.join(tmpdir(), "clipper-config-")), "config.json");
+  await writeFile(
+    configPath,
+    JSON.stringify({
+      vaultPath,
+      inboxDir: "Inbox",
+      attachmentsDir: "Inbox/attachments"
+    }),
+    "utf8"
+  );
+  const opened = [];
+
+  assert.deepEqual(
+    await handleHostRequest({ type: "open-path", target: "vault" }, configPath, {
+      openPath: async (targetPath) => {
+        opened.push(targetPath);
+      }
+    }),
+    { ok: true, path: vaultPath }
+  );
+
+  assert.equal(opened[0], vaultPath);
+  await assert.rejects(
+    () => handleHostRequest({ type: "open-path", target: "attachments" }, configPath, { openPath: async () => undefined }),
+    /路径不存在/
+  );
+  await assert.rejects(
+    () => handleHostRequest({ type: "open-path", target: "today-inbox" }, configPath, { openPath: async () => undefined }),
+    /路径不存在/
+  );
+  assert.throws(() => assertHostRequest({ type: "open-path", target: "..\\outside" }), /open-path target/);
+});
+
 test("host request handler returns selected folder from injected picker", async () => {
   assert.deepEqual(
     await handleHostRequest(
@@ -919,30 +1059,85 @@ test("extension manifest exposes popup and keyboard commands", async () => {
 test("extension background gates gesture injection behind explicit enablement and active-tab sync", async () => {
   const background = await readFile(new URL("../extension/background.js", import.meta.url), "utf8");
 
-  assert.match(background, /selectionModifier:\s*"Alt"/);
-  assert.match(background, /selectionGestureEnabled:\s*false/);
-  assert.match(background, /normalizeSelectionModifier\(config\.selectionModifier \|\| config\.gestureModifier\)/);
-  assert.match(background, /modifier:\s*gestureConfig\.selectionModifier/);
+  assert.match(background, /from "\.\/context-menu\.js"/);
+  assert.match(background, /from "\.\/commands\.js"/);
+  assert.match(background, /from "\.\/native-client\.js"/);
+  assert.match(background, /from "\.\/screenshot\.js"/);
+  assert.match(background, /from "\.\/selection-markdown\.js"/);
+  assert.match(background, /from "\.\/gesture\.js"/);
+  assert.match(background, /from "\.\/batch-save\.js"/);
+  assert.match(background, /from "\.\/config-client\.js"/);
+  const constants = await readFile(new URL("../extension/constants.js", import.meta.url), "utf8");
+  const configClient = await readFile(new URL("../extension/config-client.js", import.meta.url), "utf8");
+  const gesture = await readFile(new URL("../extension/gesture.js", import.meta.url), "utf8");
+  assert.match(constants, /selectionModifier:\s*"Alt"/);
+  assert.match(constants, /selectionGestureEnabled:\s*false/);
+  assert.match(configClient, /normalizeSelectionModifier\(config\.selectionModifier \|\| config\.gestureModifier\)/);
+  assert.match(gesture, /modifier:\s*gestureConfig\.selectionModifier/);
   assert.match(background, /syncSelectionGestureForActiveTab/);
   assert.match(background, /syncSelectionGestureForTab/);
   assert.match(background, /chrome\.tabs\.onActivated\.addListener/);
   assert.match(background, /chrome\.tabs\.onUpdated\.addListener/);
   assert.match(background, /chrome\.windows\.onFocusChanged\.addListener/);
   assert.match(background, /chrome\.windows\.WINDOW_ID_NONE/);
-  assert.match(background, /isGestureScriptableTab/);
-  assert.doesNotMatch(background, /modifier:\s*DEFAULT_SETTINGS\.gestureModifier/);
+  assert.match(gesture, /isGestureScriptableTab/);
+  assert.doesNotMatch(gesture, /modifier:\s*DEFAULT_SETTINGS\.gestureModifier/);
+});
+
+test("extension popup exposes path openers, rich markdown mode, PDF link, and viewport screenshot actions", async () => {
+  const popupHtml = await readFile(new URL("../extension/popup.html", import.meta.url), "utf8");
+  const popupJs = await readFile(new URL("../extension/popup.js", import.meta.url), "utf8");
+  const optionsJs = await readFile(new URL("../extension/options.js", import.meta.url), "utf8");
+
+  for (const id of [
+    "openTodayInbox",
+    "openAttachments",
+    "openVaultRoot",
+    "openConfigFile",
+    "selectionSaveMode",
+    "savePdfLink",
+    "captureViewport"
+  ]) {
+    assert.match(popupHtml, new RegExp(`id="${id}"`));
+    assert.match(popupJs, new RegExp(id));
+  }
+
+  assert.match(popupJs, /open-path/);
+  assert.match(popupJs, /save-pdf-link/);
+  assert.match(popupJs, /capture-viewport-screenshot/);
+  assert.match(optionsJs, /selectionSaveMode/);
+});
+
+test("host module structure separates request schema, downloads, rendering, filenames, diagnostics, and errors", async () => {
+  for (const file of [
+    "request-schema.ts",
+    "image-downloader.ts",
+    "markdown-renderer.ts",
+    "filename.ts",
+    "diagnostics.ts",
+    "errors.ts"
+  ]) {
+    await readFile(new URL(`../src/host/${file}`, import.meta.url), "utf8");
+  }
+
+  const hostRequest = await readFile(new URL("../src/host/host-request.ts", import.meta.url), "utf8");
+  const vaultWriter = await readFile(new URL("../src/host/vault-writer.ts", import.meta.url), "utf8");
+  assert.match(hostRequest, /from "\.\/request-schema\.ts"/);
+  assert.match(vaultWriter, /from "\.\/image-downloader\.ts"/);
+  assert.match(vaultWriter, /from "\.\/filename\.ts"/);
+  assert.match(vaultWriter, /from "\.\/markdown-renderer\.ts"/);
 });
 
 test("gesture selection path reuses rich selection markdown before saving", async () => {
   const background = await readFile(new URL("../extension/background.js", import.meta.url), "utf8");
 
-  assert.match(background, /const selection = await getSelectionAsMarkdown\(sender\.tab\?\.id, text\)/);
+  assert.match(background, /const selection = await getSelectionAsMarkdown\(sender\.tab\?\.id, text, config\.selectionSaveMode\)/);
   assert.match(background, /codeLanguage: typeof message\.codeLanguage === "string"[\s\S]*selection\.codeLanguage/);
   assert.doesNotMatch(background, /const markdown = normalizeSelectionText\(text\)/);
 });
 
 test("image downloader implementation documents timeout and size safety limits", async () => {
-  const vaultWriter = await readFile(new URL("../src/host/vault-writer.ts", import.meta.url), "utf8");
+  const vaultWriter = await readFile(new URL("../src/host/image-downloader.ts", import.meta.url), "utf8");
 
   assert.match(vaultWriter, /IMAGE_DOWNLOAD_TIMEOUT_MS\s*=\s*10_000/);
   assert.match(vaultWriter, /MAX_IMAGE_BYTES\s*=\s*20\s*\*\s*1024\s*\*\s*1024/);
@@ -978,22 +1173,30 @@ test("project metadata, CI, README, and changelog describe v0.2.3 stability rele
   const manifest = JSON.parse(await readFile(new URL("../extension/manifest.json", import.meta.url), "utf8"));
   const license = await readFile(new URL("../LICENSE", import.meta.url), "utf8");
   const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const gitignore = await readFile(new URL("../.gitignore", import.meta.url), "utf8");
   const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
   const changelog = await readFile(new URL("../版本记录README.md", import.meta.url), "utf8");
 
   assert.equal(packageJson.version, "0.2.3");
   assert.equal(manifest.version, "0.2.3");
+  assert.equal(manifest.background.type, "module");
   assert.match(license, /MIT License/);
   assert.match(ci, /windows-latest/);
   assert.match(ci, /macos-latest/);
   assert.match(ci, /node-version:[\s\S]*24\.x/);
+  assert.match(ci, /node-version:[\s\S]*26\.x/);
   assert.match(ci, /npm test/);
   assert.match(ci, /npm run check/);
+  assert.match(packageJson.scripts["release:zip"], /build-release/);
+  assert.match(gitignore, /^dist\/$/m);
   assert.match(readme, /0\.2\.3/);
   assert.match(readme, /scripts\/diagnose\.ps1/);
   assert.match(readme, /scripts\/diagnose-macos\.sh/);
   assert.match(readme, /常见问题/);
   assert.match(readme, /故障诊断/);
+  assert.match(readme, /打开今天 Inbox/);
+  assert.match(readme, /富 Markdown/);
+  assert.match(readme, /release zip/);
   assert.match(changelog, /## v0\.2\.3 - 2026-05-07/);
 });
 

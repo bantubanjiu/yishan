@@ -4,7 +4,8 @@ const DEFAULT_CONFIG = {
   inboxDir: "Inbox",
   attachmentsDir: "Inbox\\attachments",
   selectionModifier: "Alt",
-  selectionGestureEnabled: false
+  selectionGestureEnabled: false,
+  selectionSaveMode: "plain"
 };
 
 const fields = {
@@ -12,6 +13,7 @@ const fields = {
   inboxDir: document.querySelector("#inboxDir"),
   attachmentsDir: document.querySelector("#attachmentsDir"),
   selectionModifier: document.querySelector("#selectionModifier"),
+  selectionSaveMode: document.querySelector("#selectionSaveMode"),
   selectionGestureEnabled: document.querySelector("#selectionGestureEnabled")
 };
 const statusEl = document.querySelector("#status");
@@ -73,6 +75,7 @@ function applyConfig(config) {
   fields.inboxDir.value = config.inboxDir || DEFAULT_CONFIG.inboxDir;
   fields.attachmentsDir.value = config.attachmentsDir || DEFAULT_CONFIG.attachmentsDir;
   fields.selectionModifier.value = normalizeSelectionModifier(config.selectionModifier || config.gestureModifier);
+  fields.selectionSaveMode.value = config.selectionSaveMode === "rich" ? "rich" : DEFAULT_CONFIG.selectionSaveMode;
   fields.selectionGestureEnabled.checked = config.selectionGestureEnabled === true;
 }
 
@@ -82,6 +85,7 @@ function readConfig() {
     inboxDir: fields.inboxDir.value.trim() || DEFAULT_CONFIG.inboxDir,
     attachmentsDir: fields.attachmentsDir.value.trim() || DEFAULT_CONFIG.attachmentsDir,
     selectionModifier: normalizeSelectionModifier(fields.selectionModifier.value),
+    selectionSaveMode: fields.selectionSaveMode.value === "rich" ? "rich" : DEFAULT_CONFIG.selectionSaveMode,
     selectionGestureEnabled: fields.selectionGestureEnabled.checked
   };
 }

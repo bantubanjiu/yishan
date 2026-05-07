@@ -111,6 +111,13 @@ h1 {
   gap: 10px;
 }
 
+.path-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .section-heading {
   display: flex;
   align-items: center;

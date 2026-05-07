@@ -1,14 +1,27 @@
 import { execFile } from "node:child_process";
+import { access } from "node:fs/promises";
+import path from "node:path";
 import { promisify } from "node:util";
 
-import { loadConfig, saveConfig } from "./config.ts";
-import type { AppConfig, CaptureMessage, HostResponse } from "./types.ts";
+import { DEFAULT_CONFIG_PATH, loadConfig, saveConfig } from "./config.ts";
+import { errorMessage } from "./errors.ts";
+import { formatDate } from "./filename.ts";
+import {
+  assertHostRequest,
+  type ConfigGetRequest,
+  type ConfigSetRequest,
+  type HostRequest,
+  type OpenPathRequest,
+  type PickFolderRequest
+} from "./request-schema.ts";
+import type { AppConfig, HostResponse } from "./types.ts";
 import { writeCaptureToVault } from "./vault-writer.ts";
 
+export { assertHostRequest };
+export type { ConfigGetRequest, ConfigSetRequest, HostRequest, OpenPathRequest, PickFolderRequest };
+
 const execFileAsync = promisify(execFile);
-const MAX_TITLE_LENGTH = 300;
-const PAGE_URL_PROTOCOLS = new Set(["http:", "https:", "file:"]);
-const REMOTE_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".avif", ".bmp"]);
+
 type ExecFileLike = (
   file: string,
   args: string[],
@@ -17,22 +30,6 @@ type ExecFileLike = (
     windowsHide?: boolean;
   }
 ) => Promise<{ stdout: string }>;
-
-export type ConfigGetRequest = {
-  type: "get-config";
-};
-
-export type ConfigSetRequest = {
-  type: "set-config";
-  config: AppConfig;
-};
-
-export type PickFolderRequest = {
-  type: "pick-folder";
-  initialPath?: string;
-};
-
-export type HostRequest = CaptureMessage | ConfigGetRequest | ConfigSetRequest | PickFolderRequest;
 
 export type ConfigGetResponse = {
   ok: true;
@@ -53,10 +50,24 @@ export type PickFolderResponse =
       error: "用户取消选择文件夹";
     };
 
-export type HostRequestResponse = HostResponse | ConfigGetResponse | ConfigSetResponse | PickFolderResponse;
+export type BatchSaveTabsResponse = Extract<HostResponse, { saved: number }>;
+
+export type OpenPathResponse = {
+  ok: true;
+  path: string;
+};
+
+export type HostRequestResponse =
+  | HostResponse
+  | ConfigGetResponse
+  | ConfigSetResponse
+  | PickFolderResponse
+  | BatchSaveTabsResponse
+  | OpenPathResponse;
 
 export type HostRequestDeps = {
   pickFolder?: (initialPath?: string) => Promise<string | undefined>;
+  openPath?: (targetPath: string) => Promise<void>;
 };
 
 export async function handleHostRequest(
@@ -85,7 +96,43 @@ export async function handleHostRequest(
     return { ok: true, path: selectedPath };
   }
 
+  if (request.type === "open-path") {
+    const targetPath = await resolveOpenPathTarget(request.target, configPath);
+    const openPath = deps.openPath ?? openPathForPlatform();
+    await openPath(targetPath);
+    return { ok: true, path: targetPath };
+  }
+
   const config = await loadConfig(configPath);
+
+  if (request.type === "batch-save-tabs") {
+    const failures: Array<{
+      title: string;
+      pageUrl: string;
+      error: string;
+    }> = [];
+    let saved = 0;
+    for (const tab of request.tabs) {
+      try {
+        await writeCaptureToVault(tab, config);
+        saved += 1;
+      } catch (error) {
+        failures.push({
+          title: tab.title || "Untitled",
+          pageUrl: tab.pageUrl || "",
+          error: errorMessage(error)
+        });
+      }
+    }
+
+    return {
+      ok: true,
+      saved,
+      failed: failures.length,
+      failures
+    };
+  }
+
   const result = await writeCaptureToVault(request, config);
   return {
     ok: true,
@@ -94,175 +141,56 @@ export async function handleHostRequest(
   };
 }
 
-export function assertHostRequest(value: unknown): HostRequest {
-  if (!isRecord(value) || typeof value.type !== "string") {
-    throw new Error("Native message must be a request object");
+async function resolveOpenPathTarget(target: OpenPathRequest["target"], configPath = DEFAULT_CONFIG_PATH): Promise<string> {
+  if (target === "config") {
+    return configPath;
   }
 
-  if (value.type === "url") {
-    return {
-      type: "url",
-      title: sanitizeTitle(value.title),
-      pageUrl: validatePageUrl(value.pageUrl, "pageUrl"),
-      capturedAt: validateIsoTimestamp(value.capturedAt)
-    };
+  const config = await loadConfig(configPath);
+  const vaultPath = path.resolve(config.vaultPath);
+  if (target === "vault") {
+    return vaultPath;
   }
 
-  if (value.type === "selection") {
-    return {
-      type: "selection",
-      title: sanitizeTitle(value.title),
-      pageUrl: validatePageUrl(value.pageUrl, "pageUrl"),
-      text: validateNonEmptyString(value.text, "text"),
-      ...(typeof value.markdown === "string" ? { markdown: value.markdown } : {}),
-      ...(typeof value.codeLanguage === "string" && value.codeLanguage.trim() ? { codeLanguage: value.codeLanguage.trim() } : {}),
-      capturedAt: validateIsoTimestamp(value.capturedAt)
-    };
-  }
+  const relativePath = target === "today-inbox"
+    ? path.join(config.inboxDir, `${formatDate(new Date().toISOString())}.md`)
+    : config.attachmentsDir;
+  const resolved = resolveInsideVault(vaultPath, relativePath, "Open path target");
 
-  if (value.type === "image") {
-    return {
-      type: "image",
-      title: sanitizeTitle(value.title),
-      pageUrl: validatePageUrl(value.pageUrl, "pageUrl"),
-      imageUrl: validateImageUrl(value.imageUrl),
-      capturedAt: validateIsoTimestamp(value.capturedAt)
-    };
-  }
+  await assertPathExists(resolved);
 
-  if (value.type === "get-config") {
-    return { type: "get-config" };
-  }
-
-  if (value.type === "set-config") {
-    return {
-      type: "set-config",
-      config: sanitizeConfig(value.config)
-    };
-  }
-
-  if (value.type === "pick-folder") {
-    return {
-      type: "pick-folder",
-      ...(typeof value.initialPath === "string" && value.initialPath.trim() ? { initialPath: value.initialPath.trim() } : {})
-    };
-  }
-
-  throw new Error(`Unsupported request type: ${value.type}`);
+  return resolved;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function sanitizeTitle(value: unknown): string {
-  if (typeof value !== "string") {
-    return "Untitled";
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return "Untitled";
-  }
-  return trimmed.slice(0, MAX_TITLE_LENGTH);
-}
-
-function validateNonEmptyString(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`${field} must be a non-empty string`);
-  }
-  return value;
-}
-
-function validateIsoTimestamp(value: unknown): string {
-  if (typeof value !== "string") {
-    throw new Error("capturedAt must be an ISO timestamp string");
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    throw new Error("capturedAt must be a valid ISO timestamp");
-  }
-  return value;
-}
-
-function validatePageUrl(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`${field} must be a non-empty URL`);
-  }
-
+async function assertPathExists(targetPath: string): Promise<void> {
   try {
-    const url = new URL(value);
-    if (!PAGE_URL_PROTOCOLS.has(url.protocol)) {
-      throw new Error(`${field} must use http, https, or file protocol`);
-    }
-    return value;
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith(field)) {
-      throw error;
-    }
-    throw new Error(`${field} must be a valid URL`);
+    await access(targetPath);
+  } catch {
+    throw new Error(`路径不存在：${targetPath}`);
   }
 }
 
-function validateImageUrl(value: unknown): string {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new Error("imageUrl must be a non-empty image URL");
+function resolveInsideVault(vaultPath: string, relativePath: string, label: string): string {
+  if (!relativePath || path.isAbsolute(relativePath)) {
+    throw new Error(`${label} must be a relative path inside the vault`);
   }
 
-  if (value.startsWith("data:")) {
-    if (!/^data:image\/[a-z0-9.+-]+(?:;[^,]*)?,/i.test(value)) {
-      throw new Error("imageUrl must be an image data URL");
-    }
-    return value;
+  const resolved = path.resolve(vaultPath, relativePath);
+  const relative = path.relative(vaultPath, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(`${label} must stay inside the vault`);
   }
-
-  try {
-    const url = new URL(value);
-    if (!["http:", "https:", "file:"].includes(url.protocol)) {
-      throw new Error("imageUrl must use http, https, file, or image data protocol");
-    }
-    const ext = path.extname(url.pathname).toLowerCase();
-    if (url.protocol !== "file:" && ext && !REMOTE_IMAGE_EXTENSIONS.has(ext)) {
-      throw new Error("imageUrl must point to a supported image extension or omit the extension");
-    }
-    return value;
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith("imageUrl")) {
-      throw error;
-    }
-    throw new Error("imageUrl must be a valid URL");
-  }
+  return resolved;
 }
 
-function sanitizeConfig(value: unknown): AppConfig {
-  if (!isRecord(value)) {
-    throw new Error("config must be a JSON object");
+export function pickFolderForPlatform(platform = process.platform): (initialPath?: string) => Promise<string | undefined> {
+  if (platform === "darwin") {
+    return pickFolderWithAppleScript;
   }
-
-  const config = {
-    vaultPath: validateConfigString(value.vaultPath, "config.vaultPath"),
-    inboxDir: validateConfigString(value.inboxDir, "config.inboxDir"),
-    attachmentsDir: validateConfigString(value.attachmentsDir, "config.attachmentsDir"),
-    ...(typeof value.selectionModifier === "string" && value.selectionModifier.trim()
-      ? { selectionModifier: value.selectionModifier.trim() }
-      : {}),
-    ...(typeof value.selectionGestureEnabled === "boolean" ? { selectionGestureEnabled: value.selectionGestureEnabled } : {})
-  };
-
-  if ("selectionModifier" in value && typeof value.selectionModifier !== "string") {
-    throw new Error("config.selectionModifier must be a string");
+  if (platform === "win32") {
+    return pickFolderWithPowerShell;
   }
-  if ("selectionGestureEnabled" in value && typeof value.selectionGestureEnabled !== "boolean") {
-    throw new Error("config.selectionGestureEnabled must be a boolean");
-  }
-
-  return config;
-}
-
-function validateConfigString(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`${field} must be a non-empty string`);
-  }
-  return value.trim();
+  return pickFolderWithConsoleFallback;
 }
 
 export async function pickFolderWithPowerShell(initialPath?: string): Promise<string | undefined> {
@@ -289,16 +217,6 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
   });
   const selectedPath = stdout.trim();
   return selectedPath || undefined;
-}
-
-export function pickFolderForPlatform(platform = process.platform): (initialPath?: string) => Promise<string | undefined> {
-  if (platform === "darwin") {
-    return pickFolderWithAppleScript;
-  }
-  if (platform === "win32") {
-    return pickFolderWithPowerShell;
-  }
-  return pickFolderWithConsoleFallback;
 }
 
 export async function pickFolderWithAppleScript(
@@ -331,4 +249,20 @@ POSIX path of selectedFolder
 
 async function pickFolderWithConsoleFallback(): Promise<string | undefined> {
   throw new Error(`Folder picker is not supported on ${process.platform}. Please enter the Vault path manually.`);
+}
+
+function openPathForPlatform(platform = process.platform): (targetPath: string) => Promise<void> {
+  if (platform === "darwin") {
+    return async (targetPath) => {
+      await execFileAsync("open", [targetPath]);
+    };
+  }
+  if (platform === "win32") {
+    return async (targetPath) => {
+      await execFileAsync("explorer.exe", [targetPath], { windowsHide: true });
+    };
+  }
+  return async (targetPath) => {
+    await execFileAsync("xdg-open", [targetPath]);
+  };
 }

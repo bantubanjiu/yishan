@@ -30,6 +30,14 @@
           <span>框选截图</span>
           <small>拖拽选择区域</small>
         </button>
+        <button id="captureViewport" type="button">
+          <span>保存当前视口</span>
+          <small>整屏截图</small>
+        </button>
+        <button id="savePdfLink" type="button">
+          <span>保存 PDF 链接</span>
+          <small>标题与来源</small>
+        </button>
       </section>
 
       <section class="settings" aria-label="保存设置">
@@ -66,10 +74,25 @@
           </select>
         </label>
 
+        <label class="field">
+          <span>选中文本保存模式</span>
+          <select id="selectionSaveMode">
+            <option value="plain">安全纯文本</option>
+            <option value="rich">富 Markdown</option>
+          </select>
+        </label>
+
         <label class="field checkbox-field">
           <span>启用长按拖选自动保存</span>
           <input id="selectionGestureEnabled" type="checkbox" />
         </label>
+
+        <div class="path-actions" aria-label="打开本地路径">
+          <button class="ghost" id="openTodayInbox" type="button">打开今天 Inbox</button>
+          <button class="ghost" id="openAttachments" type="button">打开附件目录</button>
+          <button class="ghost" id="openVaultRoot" type="button">打开 Vault 根目录</button>
+          <button class="ghost" id="openConfigFile" type="button">打开配置文件</button>
+        </div>
 
         <div class="footer-actions">
           <button class="primary" id="saveConfig" type="button">保存设置</button>
