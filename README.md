@@ -5,10 +5,10 @@
 
 **把网页里的灵感，右键静默搬进 Obsidian。**
 
-Windows + Chrome/Edge 本地网页采集器：保存 URL、选中文本、图片、框选截图和当前窗口多标签到 Obsidian 当天 Inbox 日记。
+Windows/macOS + Chrome/Edge 本地网页采集器：保存 URL、选中文本、图片、框选截图和当前窗口多标签到 Obsidian 当天 Inbox 日记。
 
-[![Version](https://img.shields.io/badge/version-0.2.0-2563eb)](./版本记录README.md)
-[![Platform](https://img.shields.io/badge/platform-Windows-0078d4)](#环境要求)
+[![Version](https://img.shields.io/badge/version-0.2.2-2563eb)](./版本记录README.md)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%2F%20macOS-0078d4)](#环境要求)
 [![Browser](https://img.shields.io/badge/browser-Chrome%20%2F%20Edge-22c55e)](#安装浏览器扩展)
 [![Runtime](https://img.shields.io/badge/runtime-Node.js%20%3E%3D%2024-339933)](./package.json)
 [![Storage](https://img.shields.io/badge/storage-Obsidian%20Markdown-7c3aed)](#写入效果)
@@ -127,7 +127,8 @@ sequenceDiagram
 │  ├─ screenshot-crop.js       # 截图选区坐标归一化
 │  └─ icons/                   # 扩展图标
 ├─ scripts/
-│  └─ install-native-host.ps1  # 注册 Chrome/Edge Native Host
+│  ├─ install-native-host.ps1        # Windows 注册 Chrome/Edge Native Host
+│  └─ install-native-host-macos.sh   # macOS 注册 Chrome/Edge Native Host
 ├─ src/host/                   # Node Native Host
 │  ├─ index.ts                 # Native Messaging stdin/stdout 入口
 │  ├─ native-protocol.ts       # 4 字节长度头协议编解码
@@ -142,11 +143,11 @@ sequenceDiagram
 
 ## 环境要求
 
-- Windows。
+- Windows 或 macOS。
 - Chrome 或 Microsoft Edge。
 - Node.js `>= 24`。
 - 一个本地 Obsidian Vault。
-- PowerShell，用于注册 Native Host。
+- Windows 使用 PowerShell 注册 Native Host；macOS 使用 bash + osascript。
 
 ## 快速开始
 
@@ -159,14 +160,28 @@ cd yishan
 
 ### 2. 配置 Obsidian Vault
 
+Windows：
+
 ```powershell
 node .\src\host\configure.ts "D:\path\to\Vault" Inbox Inbox\attachments
+```
+
+macOS：
+
+```bash
+node ./src/host/configure.ts "$HOME/Obsidian/Vault" Inbox Inbox/attachments
 ```
 
 默认配置文件位置：
 
 ```text
 %USERPROFILE%\.obsidian-web-clipper-local\config.json
+```
+
+macOS 下同样位于用户主目录：
+
+```text
+$HOME/.obsidian-web-clipper-local/config.json
 ```
 
 ### 3. 加载浏览器扩展
@@ -180,18 +195,34 @@ node .\src\host\configure.ts "D:\path\to\Vault" Inbox Inbox\attachments
 
 ### 4. 注册 Native Host
 
+Windows：
+
 ```powershell
 .\scripts\install-native-host.ps1 -ExtensionId "<扩展ID>"
 ```
 
-脚本会在当前用户 HKCU 下注册 Chrome 和 Edge 的 Native Messaging Host。
+macOS：
+
+```bash
+bash ./scripts/install-native-host-macos.sh --extension-id "<扩展ID>"
+```
+
+Windows 脚本会在当前用户 HKCU 下注册 Chrome 和 Edge 的 Native Messaging Host；macOS 脚本会写入当前用户的 Chrome / Edge NativeMessagingHosts 目录。
 
 默认安装为**源代码联动模式**：浏览器启动 Native Host 时会直接运行当前仓库的 `src/host/handle-json-file.ts`。因此以后更新本仓库代码后，只要仓库路径不变，Native Host 会自动使用最新 Host 逻辑，不需要重复复制安装目录。
 
 只有在你想让 Native Host 脱离仓库、固定使用安装当时的快照时，才使用：
 
+Windows：
+
 ```powershell
 .\scripts\install-native-host.ps1 -ExtensionId "<扩展ID>" -Snapshot
+```
+
+macOS：
+
+```bash
+bash ./scripts/install-native-host-macos.sh --extension-id "<扩展ID>" --snapshot
 ```
 
 如果移动了仓库目录、换了 Node.js 路径，或更换/重装浏览器扩展导致扩展 ID 改变，需要重新执行注册脚本。
@@ -225,7 +256,7 @@ node --check extension\background.js
 
 ## 版本记录
 
-- 当前版本：`0.2.1`
+- 当前版本：`0.2.2`
 - 详细更新历史见 [`版本记录README.md`](./版本记录README.md)。
 
 ## 路线图
@@ -241,7 +272,7 @@ node --check extension\background.js
 
 官方 Obsidian Web Clipper 更适合跨浏览器、模板化、文章级采集；移山更偏向个人本地工作流：
 
-- 只面向 Windows + Chrome/Edge 的本地使用。
+- 面向 Windows/macOS + Chrome/Edge 的本地使用。
 - 通过 Native Host 直接写本地 Vault。
 - 优先追求“右键即保存”的低打扰体验。
 - 默认按当天 Inbox 追加，适合先收集、后整理。

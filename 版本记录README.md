@@ -14,7 +14,7 @@
 
 说明：
 
-- `v0.2.0` 是当前代码中可见的正式版本号。
+- `v0.2.2` 是当前代码中可见的正式版本号。
 - `H0.x` 是为了方便回看而整理的“历史迭代记录”，不是正式发布 tag。
 - 历史时间按当前工作区显示的本地时间（Asia/Shanghai）整理；日志原始时间为 UTC。
 - 涉及个人本机路径的配置只记录能力和行为，不在版本记录中展开具体私有路径。
@@ -42,6 +42,23 @@
 ---
 
 ## 当前正式版本
+
+## v0.2.2 - 2026-05-07
+
+### 更新内容
+- 增加 macOS Native Host 注册脚本，支持当前用户 Chrome 和 Microsoft Edge。
+- Popup/选项页“选择文件夹”在 macOS 下使用系统 `osascript` 文件夹选择器，Windows 继续使用 PowerShell/.NET 选择器。
+- README 补充 macOS 配置、注册和 snapshot 安装命令。
+
+### 实现方式
+- 新增 `scripts/install-native-host-macos.sh`，在 `~/Library/Application Support/Google/Chrome/NativeMessagingHosts` 和 `~/Library/Application Support/Microsoft Edge/NativeMessagingHosts` 写入 manifest。
+- `src/host/host-request.ts` 新增平台分发：`win32` 调用 PowerShell，`darwin` 调用 AppleScript，其它平台返回明确错误。
+- `tests/run-tests.mjs` 增加 macOS folder picker 和安装脚本注册路径检查。
+
+### 验证方式
+- `npm run check`
+
+---
 
 ## v0.2.1 - 2026-05-07
 
@@ -282,6 +299,7 @@ npm run check
 | v0.1.2 | 2026-05-06 | Native Host 源码联动 | 默认让 Native Host 直接运行当前仓库 Host 源码，避免安装目录旧拷贝滞后 |
 | v0.2.0 | 2026-05-06 | 快捷采集主线升级 | Popup、多标签保存、快捷键、Alt 拖选、逐条来源链接、本机时间与文件夹选择 |
 | v0.2.1 | 2026-05-07 | 标题格式与本机时间修复 | 恢复 `- HH:mm [标题](URL)` 保存格式，并按本机时间写入 |
+| v0.2.2 | 2026-05-07 | macOS 兼容 | 增加 macOS Native Host 注册脚本和 osascript 文件夹选择器 |
 
 ---
 

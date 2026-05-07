@@ -5,7 +5,13 @@ import path from "node:path";
 
 import { loadConfig } from "../src/host/config.ts";
 import { formatCaptureEntry } from "../src/host/markdown.ts";
-import { assertHostRequest, handleHostRequest } from "../src/host/host-request.ts";
+import {
+  assertHostRequest,
+  handleHostRequest,
+  pickFolderForPlatform,
+  pickFolderWithAppleScript,
+  pickFolderWithPowerShell
+} from "../src/host/host-request.ts";
 import { normalizeSelectionRect } from "../extension/screenshot-crop.js";
 import { decodeNativeMessages, encodeNativeMessage } from "../src/host/native-protocol.ts";
 import { buildAppendText, buildUpdatedNoteContent, writeCaptureToVault } from "../src/host/vault-writer.ts";
@@ -27,6 +33,11 @@ function localDatePath(vaultPath, year, month, day) {
 function localTime(isoDate) {
   const date = new Date(isoDate);
   return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
+}
+
+function expectAnyString(value) {
+  assert.equal(typeof value, "string");
+  return value;
 }
 
 test("formats a captured URL as one timestamped markdown list item", () => {
@@ -607,6 +618,32 @@ test("host request handler returns the localized cancel error when folder pickin
     ),
     { ok: false, error: "用户取消选择文件夹" }
   );
+});
+
+test("folder picker selects the native implementation for Windows and macOS", () => {
+  assert.equal(pickFolderForPlatform("win32"), pickFolderWithPowerShell);
+  assert.equal(pickFolderForPlatform("darwin"), pickFolderWithAppleScript);
+});
+
+test("macOS folder picker invokes osascript and trims selected POSIX path", async () => {
+  const selectedPath = await pickFolderWithAppleScript("/Users/me/Vault", async (file, args, options) => {
+    assert.equal(file, "osascript");
+    assert.deepEqual(args.slice(0, 2), ["-e", expectAnyString(args[1])]);
+    assert.equal(options?.env?.OBSIDIAN_CLIPPER_INITIAL_PATH, "/Users/me/Vault");
+    return { stdout: "/Users/me/Notes\n" };
+  });
+
+  assert.equal(selectedPath, "/Users/me/Notes");
+});
+
+test("macOS native host install registers user Chrome and Edge manifests", async () => {
+  const script = await readFile(new URL("../scripts/install-native-host-macos.sh", import.meta.url), "utf8");
+
+  assert.match(script, /Google\/Chrome\/NativeMessagingHosts/);
+  assert.match(script, /Microsoft Edge\/NativeMessagingHosts/);
+  assert.match(script, /exec "\$node_path" "\$active_host_dir\/index\.ts"/);
+  assert.match(script, /chmod 755 "\$launcher_path"/);
+  assert.match(script, /allowed_origins/);
 });
 
 test("native host install defaults to running host code from the repository", async () => {

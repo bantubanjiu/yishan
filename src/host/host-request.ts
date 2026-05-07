@@ -6,6 +6,14 @@ import type { AppConfig, CaptureMessage, HostResponse } from "./types.ts";
 import { writeCaptureToVault } from "./vault-writer.ts";
 
 const execFileAsync = promisify(execFile);
+type ExecFileLike = (
+  file: string,
+  args: string[],
+  options?: {
+    env?: NodeJS.ProcessEnv;
+    windowsHide?: boolean;
+  }
+) => Promise<{ stdout: string }>;
 
 export type ConfigGetRequest = {
   type: "get-config";
@@ -66,7 +74,7 @@ export async function handleHostRequest(
   }
 
   if (request.type === "pick-folder") {
-    const picker = deps.pickFolder ?? pickFolderWithPowerShell;
+    const picker = deps.pickFolder ?? pickFolderForPlatform();
     const selectedPath = await picker(request.initialPath);
     if (!selectedPath) {
       return { ok: false, error: "用户取消选择文件夹" };
@@ -130,4 +138,46 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
   });
   const selectedPath = stdout.trim();
   return selectedPath || undefined;
+}
+
+export function pickFolderForPlatform(platform = process.platform): (initialPath?: string) => Promise<string | undefined> {
+  if (platform === "darwin") {
+    return pickFolderWithAppleScript;
+  }
+  if (platform === "win32") {
+    return pickFolderWithPowerShell;
+  }
+  return pickFolderWithConsoleFallback;
+}
+
+export async function pickFolderWithAppleScript(
+  initialPath?: string,
+  execFileImpl: ExecFileLike = execFileAsync
+): Promise<string | undefined> {
+  const script = `
+set initialPath to system attribute "OBSIDIAN_CLIPPER_INITIAL_PATH"
+if initialPath is not "" then
+  try
+    set initialFolder to POSIX file initialPath as alias
+    set selectedFolder to choose folder with prompt "选择 Obsidian 仓库文件夹" default location initialFolder
+  on error
+    set selectedFolder to choose folder with prompt "选择 Obsidian 仓库文件夹"
+  end try
+else
+  set selectedFolder to choose folder with prompt "选择 Obsidian 仓库文件夹"
+end if
+POSIX path of selectedFolder
+`;
+  const { stdout } = await execFileImpl("osascript", ["-e", script], {
+    env: {
+      ...process.env,
+      OBSIDIAN_CLIPPER_INITIAL_PATH: initialPath ?? ""
+    }
+  });
+  const selectedPath = stdout.trim();
+  return selectedPath || undefined;
+}
+
+async function pickFolderWithConsoleFallback(): Promise<string | undefined> {
+  throw new Error(`Folder picker is not supported on ${process.platform}. Please enter the Vault path manually.`);
 }
