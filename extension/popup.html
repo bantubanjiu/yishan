@@ -12,18 +12,14 @@
         <div>
           <p class="eyebrow">Obsidian Web Clipper</p>
           <h1>移山</h1>
-          <p class="subtitle">快速收集当前页面、窗口标签与框选截图。</p>
+          <p class="subtitle">快速收集全部标签、截图并打开今天 Inbox。</p>
         </div>
         <span class="mark" aria-hidden="true">山</span>
       </header>
 
       <section class="quick-actions" aria-label="快速操作">
-        <button class="primary" id="saveCurrentTab" type="button">
-          <span>保存当前页</span>
-          <small>当前标签链接</small>
-        </button>
-        <button id="saveCurrentWindow" type="button">
-          <span>保存当前窗口</span>
+        <button class="primary" id="saveCurrentWindow" type="button">
+          <span>保存全部标签</span>
           <small>全部普通标签</small>
         </button>
         <button id="captureScreenshot" type="button">
@@ -31,12 +27,8 @@
           <small>拖拽选择区域</small>
         </button>
         <button id="captureViewport" type="button">
-          <span>保存当前视口</span>
-          <small>整屏截图</small>
-        </button>
-        <button id="savePdfLink" type="button">
-          <span>保存 PDF 链接</span>
-          <small>标题与来源</small>
+          <span>整屏截图</span>
+          <small>当前可见区域</small>
         </button>
       </section>
 
@@ -52,16 +44,6 @@
             <input id="vaultPath" autocomplete="off" placeholder="例如 D:\\Obsidian\\Vault" />
             <button class="ghost" id="chooseVault" type="button">选择</button>
           </div>
-        </label>
-
-        <label class="field">
-          <span>Inbox 目录</span>
-          <input id="inboxDir" autocomplete="off" placeholder="Inbox" />
-        </label>
-
-        <label class="field">
-          <span>附件目录</span>
-          <input id="attachmentsDir" autocomplete="off" placeholder="Inbox\\attachments" />
         </label>
 
         <label class="field">
@@ -89,9 +71,6 @@
 
         <div class="path-actions" aria-label="打开本地路径">
           <button class="ghost" id="openTodayInbox" type="button">打开今天 Inbox</button>
-          <button class="ghost" id="openAttachments" type="button">打开附件目录</button>
-          <button class="ghost" id="openVaultRoot" type="button">打开 Vault 根目录</button>
-          <button class="ghost" id="openConfigFile" type="button">打开配置文件</button>
         </div>
 
         <div class="footer-actions">

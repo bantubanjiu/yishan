@@ -5,7 +5,7 @@ import type { AppConfig, BatchSaveTabsRequest, CaptureMessage } from "./types.ts
 const MAX_TITLE_LENGTH = 300;
 const PAGE_URL_PROTOCOLS = new Set(["http:", "https:", "file:"]);
 const REMOTE_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".avif", ".bmp"]);
-const OPEN_PATH_TARGETS = new Set(["today-inbox", "attachments", "vault", "config"]);
+const OPEN_PATH_TARGETS = new Set(["today-inbox"]);
 
 export type ConfigGetRequest = {
   type: "get-config";
@@ -23,7 +23,7 @@ export type PickFolderRequest = {
 
 export type OpenPathRequest = {
   type: "open-path";
-  target: "today-inbox" | "attachments" | "vault" | "config";
+  target: "today-inbox";
 };
 
 export type HostRequest =
@@ -100,7 +100,7 @@ export function assertHostRequest(value: unknown): HostRequest {
 
   if (value.type === "open-path") {
     if (typeof value.target !== "string" || !OPEN_PATH_TARGETS.has(value.target)) {
-      throw new Error("open-path target must be today-inbox, attachments, vault, or config");
+      throw new Error("open-path target must be today-inbox");
     }
     return { type: "open-path", target: value.target as OpenPathRequest["target"] };
   }

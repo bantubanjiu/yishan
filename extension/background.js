@@ -7,7 +7,7 @@ import { syncSelectionGestureForActiveTab, syncSelectionGestureForTab } from "./
 import { saveCapture, sendNativeMessage } from "./native-client.js";
 import { captureAndSaveScreenshot, buildScreenshotCapture } from "./screenshot.js";
 import { getSelectionAsMarkdown } from "./selection-markdown.js";
-import { buildUrlCapture, getActiveTab, isOrdinaryTab, isRecord, notify } from "./utils.js";
+import { getActiveTab, isRecord, notify } from "./utils.js";
 
 chrome.runtime.onInstalled.addListener(() => {
   createContextMenus();
@@ -90,15 +90,6 @@ async function handleRuntimeMessage(message, sender) {
     return sendNativeMessage({ type: "open-path", target: message.target });
   }
 
-  if (message.type === "save-current-tab") {
-    const tab = await getActiveTab();
-    if (!isOrdinaryTab(tab)) {
-      return { ok: false, error: "当前标签页不是可保存的普通页面" };
-    }
-    const response = await saveCapture(buildUrlCapture(tab));
-    return { ok: true, response };
-  }
-
   if (message.type === "save-current-window") {
     return saveCurrentWindowTabs();
   }
@@ -112,15 +103,6 @@ async function handleRuntimeMessage(message, sender) {
   if (message.type === "capture-viewport-screenshot") {
     const tab = await getActiveTab();
     const response = await captureAndSaveScreenshot(tab, saveCapture, "viewport");
-    return { ok: true, response };
-  }
-
-  if (message.type === "save-pdf-link") {
-    const tab = await getActiveTab();
-    if (!isPdfTab(tab)) {
-      return { ok: false, error: "当前标签页不是 PDF 链接" };
-    }
-    const response = await saveCapture(buildUrlCapture(tab));
     return { ok: true, response };
   }
 
@@ -163,14 +145,3 @@ async function loadConfigForSelection() {
   }
 }
 
-function isPdfTab(tab) {
-  if (!tab?.url) {
-    return false;
-  }
-  try {
-    const url = new URL(tab.url);
-    return ["http:", "https:", "file:"].includes(url.protocol) && url.pathname.toLowerCase().endsWith(".pdf");
-  } catch {
-    return false;
-  }
-}

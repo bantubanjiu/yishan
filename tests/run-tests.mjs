@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -942,9 +942,12 @@ test("batch-save-tabs returns per-tab failures without blocking successful saves
   assert.match(await readFile(localDatePath(vaultPath, 2026, 5, 7), "utf8"), /\[Good\]\(https:\/\/example\.com\/good\)/);
 });
 
-test("host request handler opens only configured safe locations", async () => {
+test("host request handler opens today inbox through Obsidian URI only", async () => {
   const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
   const configPath = path.join(await mkdtemp(path.join(tmpdir(), "clipper-config-")), "config.json");
+  const inboxPath = localDatePath(vaultPath, 2026, 5, 7);
+  await mkdir(path.dirname(inboxPath), { recursive: true });
+  await writeFile(inboxPath, "# Inbox\n", "utf8");
   await writeFile(
     configPath,
     JSON.stringify({
@@ -957,24 +960,18 @@ test("host request handler opens only configured safe locations", async () => {
   const opened = [];
 
   assert.deepEqual(
-    await handleHostRequest({ type: "open-path", target: "vault" }, configPath, {
+    await handleHostRequest({ type: "open-path", target: "today-inbox" }, configPath, {
       openPath: async (targetPath) => {
         opened.push(targetPath);
       }
     }),
-    { ok: true, path: vaultPath }
+    { ok: true, path: inboxPath }
   );
 
-  assert.equal(opened[0], vaultPath);
-  await assert.rejects(
-    () => handleHostRequest({ type: "open-path", target: "attachments" }, configPath, { openPath: async () => undefined }),
-    /路径不存在/
-  );
-  await assert.rejects(
-    () => handleHostRequest({ type: "open-path", target: "today-inbox" }, configPath, { openPath: async () => undefined }),
-    /路径不存在/
-  );
-  assert.throws(() => assertHostRequest({ type: "open-path", target: "..\\outside" }), /open-path target/);
+  assert.equal(opened[0], `obsidian://open?path=${encodeURIComponent(inboxPath)}`);
+  for (const target of ["attachments", "vault", "config", "..\\outside"]) {
+    assert.throws(() => assertHostRequest({ type: "open-path", target }), /open-path target/);
+  }
 });
 
 test("host request handler returns selected folder from injected picker", async () => {
@@ -1009,6 +1006,13 @@ test("host request handler returns the localized cancel error when folder pickin
 test("folder picker selects the native implementation for Windows and macOS", () => {
   assert.equal(pickFolderForPlatform("win32"), pickFolderWithPowerShell);
   assert.equal(pickFolderForPlatform("darwin"), pickFolderWithAppleScript);
+});
+
+test("native host opens Obsidian URI through the platform URL handler", async () => {
+  const hostRequest = await readFile(new URL("../src/host/host-request.ts", import.meta.url), "utf8");
+
+  assert.match(hostRequest, new RegExp("obsidian://open[?]path="));
+  assert.match(hostRequest, /url\.dll,FileProtocolHandler/);
 });
 
 test("macOS folder picker invokes osascript and trims selected POSIX path", async () => {
@@ -1084,28 +1088,48 @@ test("extension background gates gesture injection behind explicit enablement an
   assert.doesNotMatch(gesture, /modifier:\s*DEFAULT_SETTINGS\.gestureModifier/);
 });
 
-test("extension popup exposes path openers, rich markdown mode, PDF link, and viewport screenshot actions", async () => {
+test("extension popup keeps only requested actions and notifies save results", async () => {
   const popupHtml = await readFile(new URL("../extension/popup.html", import.meta.url), "utf8");
   const popupJs = await readFile(new URL("../extension/popup.js", import.meta.url), "utf8");
+  const optionsHtml = await readFile(new URL("../extension/options.html", import.meta.url), "utf8");
   const optionsJs = await readFile(new URL("../extension/options.js", import.meta.url), "utf8");
 
-  for (const id of [
-    "openTodayInbox",
+  for (const expected of [
+    "\u4fdd\u5b58\u5168\u90e8\u6807\u7b7e",
+    "\u6574\u5c4f\u622a\u56fe",
+    "\u6253\u5f00\u4eca\u5929 Inbox",
+    "selectionSaveMode",
+    "captureViewport"
+  ]) {
+    assert.match(popupHtml, new RegExp(expected));
+  }
+
+  for (const removed of [
+    "saveCurrentTab",
+    "\u4fdd\u5b58\u5f53\u524d\u9875",
+    "savePdfLink",
+    "\u4fdd\u5b58 PDF \u94fe\u63a5",
     "openAttachments",
     "openVaultRoot",
     "openConfigFile",
-    "selectionSaveMode",
-    "savePdfLink",
-    "captureViewport"
+    "inboxDir",
+    "attachmentsDir"
   ]) {
-    assert.match(popupHtml, new RegExp(`id="${id}"`));
-    assert.match(popupJs, new RegExp(id));
+    assert.doesNotMatch(popupHtml, new RegExp(removed));
   }
 
   assert.match(popupJs, /open-path/);
-  assert.match(popupJs, /save-pdf-link/);
   assert.match(popupJs, /capture-viewport-screenshot/);
+  assert.match(popupJs, /notifySaveResult/);
+  assert.doesNotMatch(popupJs, /save-current-tab/);
+  assert.doesNotMatch(popupJs, /save-pdf-link/);
+  assert.doesNotMatch(optionsHtml, /id="inboxDir"/);
+  assert.doesNotMatch(optionsHtml, /id="attachmentsDir"/);
   assert.match(optionsJs, /selectionSaveMode/);
+  assert.match(popupJs, /hiddenConfig[.]inboxDir/);
+  assert.match(popupJs, /hiddenConfig[.]attachmentsDir/);
+  assert.match(optionsJs, /hiddenConfig[.]inboxDir/);
+  assert.match(optionsJs, /hiddenConfig[.]attachmentsDir/);
 });
 
 test("host module structure separates request schema, downloads, rendering, filenames, diagnostics, and errors", async () => {

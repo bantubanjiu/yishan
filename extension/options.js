@@ -1,8 +1,6 @@
 const HOST_NAME = "com.local.obsidian_web_clipper";
 const DEFAULT_CONFIG = {
   vaultPath: "",
-  inboxDir: "Inbox",
-  attachmentsDir: "Inbox\\attachments",
   selectionModifier: "Alt",
   selectionGestureEnabled: false,
   selectionSaveMode: "plain"
@@ -10,14 +8,16 @@ const DEFAULT_CONFIG = {
 
 const fields = {
   vaultPath: document.querySelector("#vaultPath"),
-  inboxDir: document.querySelector("#inboxDir"),
-  attachmentsDir: document.querySelector("#attachmentsDir"),
   selectionModifier: document.querySelector("#selectionModifier"),
   selectionSaveMode: document.querySelector("#selectionSaveMode"),
   selectionGestureEnabled: document.querySelector("#selectionGestureEnabled")
 };
 const statusEl = document.querySelector("#status");
 const buttons = Array.from(document.querySelectorAll("button"));
+let hiddenConfig = {
+  inboxDir: "Inbox",
+  attachmentsDir: "Inbox\\attachments"
+};
 
 const saveButton = document.querySelector("#save");
 const reloadButton = document.querySelector("#reload");
@@ -72,8 +72,10 @@ async function openShortcuts() {
 
 function applyConfig(config) {
   fields.vaultPath.value = config.vaultPath || DEFAULT_CONFIG.vaultPath;
-  fields.inboxDir.value = config.inboxDir || DEFAULT_CONFIG.inboxDir;
-  fields.attachmentsDir.value = config.attachmentsDir || DEFAULT_CONFIG.attachmentsDir;
+  hiddenConfig = {
+    inboxDir: config.inboxDir || hiddenConfig.inboxDir,
+    attachmentsDir: config.attachmentsDir || hiddenConfig.attachmentsDir
+  };
   fields.selectionModifier.value = normalizeSelectionModifier(config.selectionModifier || config.gestureModifier);
   fields.selectionSaveMode.value = config.selectionSaveMode === "rich" ? "rich" : DEFAULT_CONFIG.selectionSaveMode;
   fields.selectionGestureEnabled.checked = config.selectionGestureEnabled === true;
@@ -82,8 +84,8 @@ function applyConfig(config) {
 function readConfig() {
   return {
     vaultPath: fields.vaultPath.value.trim(),
-    inboxDir: fields.inboxDir.value.trim() || DEFAULT_CONFIG.inboxDir,
-    attachmentsDir: fields.attachmentsDir.value.trim() || DEFAULT_CONFIG.attachmentsDir,
+    inboxDir: hiddenConfig.inboxDir,
+    attachmentsDir: hiddenConfig.attachmentsDir,
     selectionModifier: normalizeSelectionModifier(fields.selectionModifier.value),
     selectionSaveMode: fields.selectionSaveMode.value === "rich" ? "rich" : DEFAULT_CONFIG.selectionSaveMode,
     selectionGestureEnabled: fields.selectionGestureEnabled.checked

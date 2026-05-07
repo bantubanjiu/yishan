@@ -99,7 +99,7 @@ export async function handleHostRequest(
   if (request.type === "open-path") {
     const targetPath = await resolveOpenPathTarget(request.target, configPath);
     const openPath = deps.openPath ?? openPathForPlatform();
-    await openPath(targetPath);
+    await openPath(toObsidianOpenUri(targetPath));
     return { ok: true, path: targetPath };
   }
 
@@ -142,24 +142,22 @@ export async function handleHostRequest(
 }
 
 async function resolveOpenPathTarget(target: OpenPathRequest["target"], configPath = DEFAULT_CONFIG_PATH): Promise<string> {
-  if (target === "config") {
-    return configPath;
+  if (target !== "today-inbox") {
+    throw new Error("open-path target must be today-inbox");
   }
 
   const config = await loadConfig(configPath);
   const vaultPath = path.resolve(config.vaultPath);
-  if (target === "vault") {
-    return vaultPath;
-  }
-
-  const relativePath = target === "today-inbox"
-    ? path.join(config.inboxDir, `${formatDate(new Date().toISOString())}.md`)
-    : config.attachmentsDir;
+  const relativePath = path.join(config.inboxDir, `${formatDate(new Date().toISOString())}.md`);
   const resolved = resolveInsideVault(vaultPath, relativePath, "Open path target");
 
   await assertPathExists(resolved);
 
   return resolved;
+}
+
+function toObsidianOpenUri(notePath: string): string {
+  return `obsidian://open?path=${encodeURIComponent(notePath)}`;
 }
 
 async function assertPathExists(targetPath: string): Promise<void> {
@@ -259,7 +257,7 @@ function openPathForPlatform(platform = process.platform): (targetPath: string) 
   }
   if (platform === "win32") {
     return async (targetPath) => {
-      await execFileAsync("explorer.exe", [targetPath], { windowsHide: true });
+      await execFileAsync("rundll32.exe", ["url.dll,FileProtocolHandler", targetPath], { windowsHide: true });
     };
   }
   return async (targetPath) => {
