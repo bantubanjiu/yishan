@@ -12,7 +12,7 @@ function localTime(isoDate: string): string {
   return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
 }
 
-test("formats a captured URL as one timestamped markdown list item", () => {
+test("formats a captured URL as a linked title with a timestamp child", () => {
   const entry = formatCaptureEntry({
     type: "url",
     title: "Example [Docs]",
@@ -20,7 +20,7 @@ test("formats a captured URL as one timestamped markdown list item", () => {
     capturedAt: localIso(2026, 4, 29, 6, 30)
   });
 
-  assert.equal(entry, "- 06:30 [Example \\[Docs\\]](https://example.com/docs)\n");
+  assert.equal(entry, "- [Example \\[Docs\\]](https://example.com/docs)\n\n  - 06:30\n");
 });
 
 test("formats capture time in the host local timezone", () => {
@@ -33,10 +33,10 @@ test("formats capture time in the host local timezone", () => {
     capturedAt
   });
 
-  assert.equal(entry, `- ${localTime(capturedAt)} [Local Time](https://example.com/local-time)\n`);
+  assert.equal(entry, `- [Local Time](https://example.com/local-time)\n\n  - ${localTime(capturedAt)}\n`);
 });
 
-test("formats selected text as an Obsidian fenced code block under the source link", () => {
+test("formats selected text as an Obsidian fenced code block under the timestamp", () => {
   const entry = formatCaptureEntry({
     type: "selection",
     title: "Article",
@@ -48,7 +48,7 @@ test("formats selected text as an Obsidian fenced code block under the source li
 
   assert.equal(
     entry,
-    "- 06:31 [Article](https://example.com/a)\n\n```text\nfirst line\n  second line\n```\n"
+    "- [Article](https://example.com/a)\n\n  - 06:31\n```text\nfirst line\n  second line\n```\n"
   );
 });
 
@@ -61,7 +61,7 @@ test("uses a longer code fence when selected text already contains backtick fenc
     capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
-  assert.equal(entry, "- 06:31 [Article](https://example.com/a)\n\n````text\nbefore\n```\ninside\n```\nafter\n````\n");
+  assert.equal(entry, "- [Article](https://example.com/a)\n\n  - 06:31\n````text\nbefore\n```\ninside\n```\nafter\n````\n");
 });
 
 test("uses explicit selection code language when provided by the browser context", () => {
@@ -74,7 +74,7 @@ test("uses explicit selection code language when provided by the browser context
     capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
-  assert.equal(entry, "- 06:31 [Code](https://example.com/code)\n\n```js\nconst value = 1;\n```\n");
+  assert.equal(entry, "- [Code](https://example.com/code)\n\n  - 06:31\n```js\nconst value = 1;\n```\n");
 });
 
 test("detects JSON selections and labels the code block", () => {
@@ -86,7 +86,7 @@ test("detects JSON selections and labels the code block", () => {
     capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
-  assert.equal(entry, "- 06:31 [JSON](https://example.com/json)\n\n```json\n{\n  \"name\": \"yishan\",\n  \"enabled\": true\n}\n```\n");
+  assert.equal(entry, "- [JSON](https://example.com/json)\n\n  - 06:31\n```json\n{\n  \"name\": \"yishan\",\n  \"enabled\": true\n}\n```\n");
 });
 
 test("detects common code-like selections before falling back to text", () => {
@@ -117,7 +117,7 @@ test("detects common code-like selections before falling back to text", () => {
   assert.match(textEntry, /\n```text\n/);
 });
 
-test("formats a downloaded image as an embedded Obsidian attachment with original image URL", () => {
+test("formats a downloaded image as only an embedded Obsidian attachment", () => {
   const entry = formatCaptureEntry(
     {
       type: "image",
@@ -131,11 +131,12 @@ test("formats a downloaded image as an embedded Obsidian attachment with origina
 
   assert.equal(
     entry,
-    "- 06:32 [Image Page](https://example.com/page)\n  ![[20260429-063200-image.jpg]]\n  来源图片：https://cdn.example.com/image.jpg\n"
+    "- [Image Page](https://example.com/page)\n\n  - 06:32\n  ![[20260429-063200-image.jpg]]\n"
   );
+  assert.doesNotMatch(entry, /来源图片|https:\/\/cdn\.example\.com\/image\.jpg/);
 });
 
-test("formats image download failure without dropping the source image URL", () => {
+test("formats image download failure without writing the source image URL", () => {
   const entry = formatCaptureEntry(
     {
       type: "image",
@@ -149,6 +150,7 @@ test("formats image download failure without dropping the source image URL", () 
 
   assert.equal(
     entry,
-    "- 06:33 [Image Page](https://example.com/page)\n  图片下载失败：HTTP 403\n  来源图片：https://cdn.example.com/image.jpg\n"
+    "- [Image Page](https://example.com/page)\n\n  - 06:33\n  图片下载失败：HTTP 403\n"
   );
+  assert.doesNotMatch(entry, /来源图片|https:\/\/cdn\.example\.com\/image\.jpg/);
 });

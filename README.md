@@ -7,7 +7,7 @@
 
 Windows/macOS + Chrome/Edge 本地网页采集器：保存 URL、选中文本、图片、框选截图和当前窗口多标签到 Obsidian 当天 Inbox 日记。
 
-[![Version](https://img.shields.io/badge/version-0.2.4-2563eb)](./版本记录README.md)
+[![Version](https://img.shields.io/badge/version-0.2.5-2563eb)](./版本记录README.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%2F%20macOS-0078d4)](#系统要求)
 [![Browser](https://img.shields.io/badge/browser-Chrome%20%2F%20Edge-22c55e)](#快速安装)
 [![Runtime](https://img.shields.io/badge/runtime-Node.js%20%3E%3D%2024-339933)](./package.json)
@@ -24,18 +24,19 @@ Windows/macOS + Chrome/Edge 本地网页采集器：保存 URL、选中文本、
 适合高频收集：网页链接、选中文本、网页图片、局部截图，以及当前窗口多个普通标签页。保存条目保持稳定格式：
 
 ```markdown
-- HH:mm [页面标题](页面URL)
+- [页面标题](页面URL)
+
+  - HH:mm
 ```
 
 时间和日记文件名按本机本地时间计算。
 
-## 最新更新：v0.2.4
+## 最新更新：v0.2.5
 
-- 已完成优化计划中的工程拆分：`background.js` 拆为右键菜单、快捷键、Native 客户端、截图、选区 Markdown、拖选、批量保存、配置等模块；Host 端拆出请求 schema、图片下载、文件名、错误与渲染边界。
-- 批量保存当前窗口改为**单次 Native Message**，返回成功数、失败数和失败明细，部分失败不影响其它标签页。
-- Popup 新增：打开今天 Inbox、附件目录、Vault 根目录、配置文件，保存当前视口截图，保存 PDF 链接。
-- 选中文本保存新增“安全纯文本 / 富 Markdown”模式；默认安全纯文本，富 Markdown 失败会回退。
-- CI 补齐 Windows/macOS + Node 24.x/26.x；新增 `npm run release:zip` 本地打包。
+- 保存条目改为“链接标题 + 下方时间戳”结构，便于同一天内按同一链接归类整理。
+- 选中文本的代码块紧跟时间戳写入，保留自动语言识别和安全 fenced code block。
+- 图片/截图只写 Obsidian 附件嵌入或失败原因，不再额外记录原始图片来源 URL。
+- 继续保留本机本地时间、并发写入文件锁、图片安全校验和失败不阻断写入。
 
 ## 功能清单
 
@@ -44,7 +45,7 @@ Windows/macOS + Chrome/Edge 本地网页采集器：保存 URL、选中文本、
 | 保存页面 URL | 页面空白处右键、Popup 或快捷键，一键追加当前页面标题和链接。 |
 | 保存选中文本 | 选中文本后右键保存；可在“安全纯文本”和“富 Markdown”模式间切换；也可启用长按 Alt/Ctrl/Shift/Meta 后拖选自动保存。 |
 | 代码块识别 | 优先读取网页代码块语言，并自动识别 JSON/HTML/CSS/JS/TS/Python/Shell/Markdown，失败回退 `text`。 |
-| 保存图片 | 图片右键保存；Native Host 校验图片类型、10 秒超时、20MB 上限，失败时仍写入 Markdown 失败原因。 |
+| 保存图片 | 图片右键保存；Native Host 校验图片类型、10 秒超时、20MB 上限；成功只嵌入附件，失败只记录失败原因。 |
 | 框选/视口截图 | 右键、Popup 或快捷键触发后拖拽选择可见区域；Popup 也可直接保存当前视口截图。 |
 | 多标签快速保存 | Popup 或快捷键用单次 Native Message 保存当前窗口全部普通 `http/https/file` 标签页，跳过浏览器内部页。 |
 | 本地路径打开 | Popup 可打开今天 Inbox、附件目录、Vault 根目录和配置文件。 |
@@ -149,18 +150,18 @@ bash ./scripts/install-native-host-macos.sh --extension-id "<扩展ID>" --snapsh
 - 左键点击插件图标：打开 Popup，可保存当前页、保存当前窗口全部普通标签页、框选截图、当前视口截图、PDF 链接、修改路径和选区触发键。
 - Popup 的路径按钮可打开今天 Inbox、附件目录、Vault 根目录和配置文件；路径不存在或越界时 Native Host 会返回明确错误。
 - 页面空白处右键：保存当前页面 URL。
-- 选中文本右键：保存选中文本和来源链接；默认用安全纯文本，切换到富 Markdown 后会尽量保留标题、列表、链接、引用、代码块和图片，失败时回退纯文本。
+- 选中文本右键：保存选中文本和页面链接；默认用安全纯文本，切换到富 Markdown 后会尽量保留标题、列表、链接、引用、代码块和图片，失败时回退纯文本。
 - 长按 Alt 后拖选文本：需先在 Popup/选项页启用；显示蓝色高亮框，松开鼠标后自动保存选区；触发键可改为 Ctrl/Shift/Meta。
-- 图片上右键：下载图片并保存来源；非图片响应、超时或超过 20MB 会记录失败原因，不阻断正文保存。
+- 图片上右键：下载图片并保存为附件；日记里只嵌入附件，不再追加原始图片 URL。非图片响应、超时或超过 20MB 会记录失败原因，不阻断正文保存。
 - 页面右键或快捷键 `Alt+Shift+X`：框选截图并保存。
 - 快捷键 `Alt+Shift+S`：用单次 Native Message 保存当前窗口全部普通 `http/https/file` 标签。快捷键可在 `chrome://extensions/shortcuts` 中自定义。
 - 修改 Vault 路径时点击“选择文件夹”，Native Host 会弹出系统文件夹选择器。
 
 ## 常见问题
 
-### 为什么保存标题必须是 `- HH:mm [标题](URL)`？
+### 为什么保存标题是链接，时间戳在下一行？
 
-这是当前稳定格式，便于当天 Inbox 按时间顺序追加。v0.2.1 起已恢复该格式，并用本机本地时间生成 `HH:mm` 和 `YYYY-MM-DD.md`。
+这是 v0.2.5 起的稳定格式：链接作为条目标题，下面记录本机本地时间 `HH:mm`。同一天多次收录同一链接时，可以直接按链接标题归类整理；当天日记文件名仍按本机本地日期生成。
 
 ### 拖选自动保存为什么在某些页面不可用？
 
@@ -273,7 +274,7 @@ npm run release:zip
 
 ## Changelog
 
-- 当前版本：`0.2.4`
+- 当前版本：`0.2.5`
 - 详细更新历史见 [`版本记录README.md`](./版本记录README.md)。
 
 ## License

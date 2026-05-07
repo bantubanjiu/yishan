@@ -9,24 +9,23 @@ export function formatCaptureEntry(
   message: CaptureMessage,
   options: FormatCaptureOptions = {}
 ): string {
-  const source = `- ${formatTime(message.capturedAt)} [${escapeMarkdownLinkText(message.title)}](${message.pageUrl})`;
+  const title = `- [${escapeMarkdownLinkText(message.title)}](${message.pageUrl})`;
+  const timestamp = `  - ${formatTime(message.capturedAt)}`;
+  const header = `${title}\n\n${timestamp}`;
 
   if (message.type === "url") {
-    return `${source}\n`;
+    return `${header}\n`;
   }
 
   if (message.type === "selection") {
-    return `${source}\n\n${formatFencedCodeBlock(message.text, message.codeLanguage)}\n`;
+    return `${header}\n${formatFencedCodeBlock(message.text, message.codeLanguage)}\n`;
   }
 
-  const lines = [source];
+  const lines = [title, "", timestamp];
   if (options.attachmentName) {
     lines.push(`  ![[${options.attachmentName}]]`);
   } else if (options.imageError) {
     lines.push(`  图片下载失败：${options.imageError}`);
-  }
-  if (!message.imageUrl.startsWith("data:")) {
-    lines.push(`  来源图片：${message.imageUrl}`);
   }
   return `${lines.join("\n")}\n`;
 }
