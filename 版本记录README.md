@@ -14,7 +14,7 @@
 
 说明：
 
-- `v0.2.3` 是当前代码中可见的正式版本号。
+- `v0.2.4` 是当前代码中可见的正式版本号。
 - `H0.x` 是为了方便回看而整理的“历史迭代记录”，不是正式发布 tag。
 - 历史时间按当前工作区显示的本地时间（Asia/Shanghai）整理；日志原始时间为 UTC。
 - 涉及个人本机路径的配置只记录能力和行为，不在版本记录中展开具体私有路径。
@@ -42,6 +42,36 @@
 ---
 
 ## 当前正式版本
+
+## v0.2.4 - 2026-05-07
+
+### 更新内容
+- 完成优化计划中剩余的 P1/P2 主体事项：扩展端和 Host 端拆分为更小模块，降低后续 Codex/vibe coding 修改风险。
+- “保存当前窗口”改为单次 `batch-save-tabs` Native Message，请求一次传递所有普通标签页，并返回 `saved`、`failed`、`failures`。
+- Popup 新增打开今天 Inbox、附件目录、Vault 根目录、配置文件的入口，并增加当前视口截图和 PDF 链接保存按钮。
+- 选中文本保存新增 `selectionSaveMode`：默认安全纯文本，可切换富 Markdown；富 Markdown 提取失败时回退纯文本。
+- 新增 `npm run release:zip` 本地打包脚本；GitHub Actions 增加 Node 26.x 矩阵。
+- README 增加“最新更新”摘要，让 GitHub 首页能直接看到本轮优化结果。
+
+### 实现方式
+- `extension/background.js` 保留服务工作线程入口和事件注册，功能逻辑拆到 `context-menu.js`、`commands.js`、`native-client.js`、`screenshot.js`、`selection-markdown.js`、`gesture.js`、`batch-save.js`、`config-client.js` 等模块。
+- `src/host/host-request.ts` 专注请求分发，请求白名单校验移动到 `request-schema.ts`，图片下载移动到 `image-downloader.ts`，日期/附件名移动到 `filename.ts`，通用错误工具移动到 `errors.ts`。
+- `batch-save-tabs` 在 Host 端逐条写入并收集失败明细，单条失败不阻断后续标签写入。
+- `open-path` 只允许固定目标枚举，不接受任意路径；路径不存在或越界时返回明确错误。
+- `scripts/build-release.mjs` 生成 `dist/yishan-release.zip`，`dist/` 已加入 `.gitignore`。
+
+### 验证方式
+- `npm.cmd test`
+- `npm.cmd run check`
+- `node --check` 覆盖扩展、Host 和 release 脚本模块
+- `npm.cmd run release:zip`
+
+### 已知限制
+- 本轮未做滚动长截图拼接。
+- 本轮未做 PDF 正文文本提取，只实现 PDF 链接保存。
+- 未在真实 Chrome/Edge UI 中手动加载扩展验收。
+
+---
 
 ## v0.2.3 - 2026-05-07
 

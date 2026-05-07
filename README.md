@@ -7,7 +7,7 @@
 
 Windows/macOS + Chrome/Edge 本地网页采集器：保存 URL、选中文本、图片、框选截图和当前窗口多标签到 Obsidian 当天 Inbox 日记。
 
-[![Version](https://img.shields.io/badge/version-0.2.3-2563eb)](./版本记录README.md)
+[![Version](https://img.shields.io/badge/version-0.2.4-2563eb)](./版本记录README.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%2F%20macOS-0078d4)](#系统要求)
 [![Browser](https://img.shields.io/badge/browser-Chrome%20%2F%20Edge-22c55e)](#快速安装)
 [![Runtime](https://img.shields.io/badge/runtime-Node.js%20%3E%3D%2024-339933)](./package.json)
@@ -28,6 +28,14 @@ Windows/macOS + Chrome/Edge 本地网页采集器：保存 URL、选中文本、
 ```
 
 时间和日记文件名按本机本地时间计算。
+
+## 最新更新：v0.2.4
+
+- 已完成优化计划中的工程拆分：`background.js` 拆为右键菜单、快捷键、Native 客户端、截图、选区 Markdown、拖选、批量保存、配置等模块；Host 端拆出请求 schema、图片下载、文件名、错误与渲染边界。
+- 批量保存当前窗口改为**单次 Native Message**，返回成功数、失败数和失败明细，部分失败不影响其它标签页。
+- Popup 新增：打开今天 Inbox、附件目录、Vault 根目录、配置文件，保存当前视口截图，保存 PDF 链接。
+- 选中文本保存新增“安全纯文本 / 富 Markdown”模式；默认安全纯文本，富 Markdown 失败会回退。
+- CI 补齐 Windows/macOS + Node 24.x/26.x；新增 `npm run release:zip` 本地打包。
 
 ## 功能清单
 
@@ -265,7 +273,7 @@ npm run release:zip
 
 ## Changelog
 
-- 当前版本：`0.2.3`
+- 当前版本：`0.2.4`
 - 详细更新历史见 [`版本记录README.md`](./版本记录README.md)。
 
 ## License
