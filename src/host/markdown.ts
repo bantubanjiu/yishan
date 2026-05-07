@@ -3,12 +3,17 @@ import type { CaptureMessage } from "./types.ts";
 export type FormatCaptureOptions = {
   attachmentName?: string;
   imageError?: string;
+  standalone?: boolean;
 };
 
 export function formatCaptureEntry(
   message: CaptureMessage,
   options: FormatCaptureOptions = {}
 ): string {
+  if (message.type === "page" || options.standalone) {
+    return formatPageDocument(message);
+  }
+
   const title = `- [${escapeMarkdownLinkText(message.title)}](${message.pageUrl})`;
   const timestamp = `  - ${formatTime(message.capturedAt)}`;
   const header = `${title}\n\n${timestamp}`;
@@ -28,6 +33,24 @@ export function formatCaptureEntry(
     lines.push(`  图片下载失败：${options.imageError}`);
   }
   return `${lines.join("\n")}\n`;
+}
+
+function formatPageDocument(message: CaptureMessage): string {
+  if (message.type !== "page") {
+    throw new Error("Standalone markdown documents require a page capture");
+  }
+
+  const markdown = message.markdown.replace(/\r\n?/g, "\n").trim();
+  return [
+    "---",
+    `title: ${yamlString(message.title)}`,
+    `source: ${yamlString(message.pageUrl)}`,
+    `clipped_at: ${yamlString(message.capturedAt)}`,
+    "---",
+    "",
+    markdown,
+    ""
+  ].join("\n");
 }
 
 function formatTime(isoDate: string): string {
@@ -159,4 +182,8 @@ function looksLikeMarkdown(content: string): boolean {
 
 function escapeMarkdownLinkText(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll("[", "\\[").replaceAll("]", "\\]");
+}
+
+function yamlString(value: string): string {
+  return JSON.stringify(value);
 }

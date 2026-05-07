@@ -6,6 +6,17 @@ export type CaptureMessage =
       capturedAt: string;
     }
   | {
+      type: "page";
+      title: string;
+      pageUrl: string;
+      markdown: string;
+      images?: Array<{
+        url: string;
+        alt?: string;
+      }>;
+      capturedAt: string;
+    }
+  | {
       type: "selection";
       title: string;
       pageUrl: string;
@@ -41,6 +52,7 @@ export type HostResponse =
       ok: true;
       notePath: string;
       attachmentName?: string;
+      attachments?: string[];
     }
   | {
       ok: true;

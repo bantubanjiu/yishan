@@ -137,7 +137,8 @@ export async function handleHostRequest(
   return {
     ok: true,
     notePath: result.notePath,
-    attachmentName: result.attachmentName
+    attachmentName: result.attachmentName,
+    attachments: result.attachments
   };
 }
 

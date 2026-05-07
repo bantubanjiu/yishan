@@ -10,6 +10,21 @@ export function buildAttachmentName(message: Extract<CaptureMessage, { type: "im
   return `${stamp}-${hash}${extension}`;
 }
 
+export function buildPageAttachmentName(
+  message: Extract<CaptureMessage, { type: "page" }>,
+  imageUrl: string,
+  contentType?: string
+): string {
+  const extension = extensionFor(imageUrl, contentType);
+  const stamp = compactTimestamp(message.capturedAt);
+  const hash = createHash("sha256").update(`${message.pageUrl}\0${imageUrl}\0${message.capturedAt}`).digest("hex").slice(0, 8);
+  return `${stamp}-${hash}${extension}`;
+}
+
+export function buildPageNoteBaseName(message: Extract<CaptureMessage, { type: "page" }>): string {
+  return `${safeFileStem(message.title)}-${compactTimestamp(message.capturedAt)}`;
+}
+
 export function formatDate(isoDate: string): string {
   const date = new Date(isoDate);
   if (Number.isNaN(date.getTime())) {
@@ -26,6 +41,16 @@ function compactTimestamp(isoDate: string): string {
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(
     date.getSeconds()
   )}`;
+}
+
+function safeFileStem(value: string): string {
+  const normalized = value
+    .normalize("NFKC")
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[. ]+$/g, "");
+  return (normalized || "Untitled").slice(0, 80);
 }
 
 function extensionFor(imageUrl: string, contentType?: string): string {

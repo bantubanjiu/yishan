@@ -1,8 +1,8 @@
-import { mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rm, writeFile, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 
 import { errorMessage, isNodeError } from "./errors.ts";
-import { buildAttachmentName, formatDate } from "./filename.ts";
+import { buildAttachmentName, buildPageAttachmentName, buildPageNoteBaseName, formatDate } from "./filename.ts";
 import { defaultFetchBinary, type FetchBinaryResult, validateDownloadedImage } from "./image-downloader.ts";
 import { formatCaptureEntry } from "./markdown-renderer.ts";
 import type { AppConfig, CaptureMessage } from "./types.ts";
@@ -14,6 +14,7 @@ export type VaultWriterDeps = {
 export type VaultWriteResult = {
   notePath: string;
   attachmentName?: string;
+  attachments?: string[];
 };
 
 export async function writeCaptureToVault(
@@ -28,6 +29,10 @@ export async function writeCaptureToVault(
   const attachmentsPath = resolveInsideVault(vaultPath, config.attachmentsDir, "Attachments directory");
 
   await mkdir(inboxPath, { recursive: true });
+
+  if (message.type === "page") {
+    return writePageCaptureToVault(message, inboxPath, attachmentsPath, deps);
+  }
 
   const notePath = path.join(inboxPath, `${formatDate(message.capturedAt)}.md`);
   let attachmentName: string | undefined;
@@ -52,6 +57,48 @@ export async function writeCaptureToVault(
     await writeFile(notePath, buildUpdatedNoteContent(existingContent, message, entry), "utf8");
   });
   return { notePath, attachmentName };
+}
+
+async function writePageCaptureToVault(
+  message: Extract<CaptureMessage, { type: "page" }>,
+  inboxPath: string,
+  attachmentsPath: string,
+  deps: VaultWriterDeps
+): Promise<VaultWriteResult> {
+  let markdown = message.markdown;
+  const attachments: string[] = [];
+  const imageErrors: string[] = [];
+
+  if (message.images?.length) {
+    await mkdir(attachmentsPath, { recursive: true });
+    const fetchBinary = deps.fetchBinary ?? defaultFetchBinary;
+
+    for (const image of message.images) {
+      try {
+        const downloaded = await fetchBinary(image.url);
+        validateDownloadedImage(downloaded);
+        const attachmentName = buildPageAttachmentName(message, image.url, downloaded.contentType);
+        await writeAttachmentWithoutCollision(path.join(attachmentsPath, attachmentName), downloaded.bytes);
+        attachments.push(attachmentName);
+        markdown = replaceMarkdownImageReferences(markdown, image.url, attachmentName);
+      } catch (error) {
+        imageErrors.push(`[${image.alt || image.url}](${image.url}) - ${errorMessage(error)}`);
+      }
+    }
+  }
+
+  if (imageErrors.length > 0) {
+    markdown = `${markdown.trim()}\n\n${imageErrors.map((error) => `> 图片本地化失败：${error}`).join("\n")}`;
+  }
+
+  const reservedNote = await reserveStandaloneNote(inboxPath, buildPageNoteBaseName(message));
+  try {
+    const entry = formatCaptureEntry({ ...message, markdown }, { standalone: true });
+    await reservedNote.handle.writeFile(entry, "utf8");
+  } finally {
+    await reservedNote.handle.close();
+  }
+  return { notePath: reservedNote.notePath, attachments };
 }
 
 export function buildUpdatedNoteContent(existingContent: string, _message: CaptureMessage, entry: string): string {
@@ -129,6 +176,44 @@ function hasUnclosedFence(markdown: string): boolean {
   return Boolean(matches && matches.length % 2 === 1);
 }
 
+async function reserveStandaloneNote(directory: string, baseName: string): Promise<{ notePath: string; handle: FileHandle }> {
+  let index = 0;
+  while (true) {
+    const suffix = index === 0 ? "" : `-${index + 1}`;
+    const notePath = path.join(directory, `${baseName}${suffix}.md`);
+    try {
+      const handle = await open(notePath, "wx");
+      return { notePath, handle };
+    } catch (error) {
+      if (!isNodeError(error) || error.code !== "EEXIST") {
+        throw error;
+      }
+      index += 1;
+    }
+  }
+}
+
+function replaceMarkdownImageReferences(markdown: string, imageUrl: string, attachmentName: string): string {
+  const escapedUrl = escapeRegExp(imageUrl);
+  const encodedUrl = escapeRegExp(encodeURI(imageUrl));
+  const pattern = new RegExp(`!\\[([^\\]]*)\\]\\((${escapedUrl}|${encodedUrl})(?:\\s+["'][^"']*["'])?\\)`, "g");
+  return markdown.replace(pattern, `![[${attachmentName}]]`);
+}
+
+async function writeAttachmentWithoutCollision(filePath: string, bytes: Uint8Array): Promise<void> {
+  try {
+    await writeFile(filePath, bytes, { flag: "wx" });
+  } catch (error) {
+    if (!isNodeError(error) || error.code !== "EEXIST") {
+      throw error;
+    }
+  }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function resolveInsideVault(vaultPath: string, relativePath: string, label: string): string {
   if (!relativePath || path.isAbsolute(relativePath)) {
     throw new Error(`${label} must be a relative path inside the vault`);
@@ -151,5 +236,8 @@ function validateCapture(message: CaptureMessage): void {
   }
   if (message.type === "image" && !message.imageUrl) {
     throw new Error("Image capture is missing imageUrl");
+  }
+  if (message.type === "page" && !message.markdown?.trim()) {
+    throw new Error("Page capture is missing markdown");
   }
 }

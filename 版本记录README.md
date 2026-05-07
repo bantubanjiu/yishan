@@ -46,15 +46,20 @@
 ## v0.2.5 - 2026-05-07
 
 ### 更新内容
+- 保存页面改为页面剪藏：右键保存当前页面时提取正文 Markdown、尽量本地化页面图片，并生成单独 Markdown 文档，不再写入当天 Inbox 日记。
+- 右键菜单中“框选截图保存到 Obsidian”移动到“保存当前页面剪藏到 Obsidian”上方。
 - 保存条目改为链接标题在上、时间戳在下：`- [页面标题](页面URL)` 后接 `  - HH:mm`，便于同一天同一链接的多次摘录归类整理。
 - 选中文本继续保存为安全 fenced code block，代码块紧跟时间戳写入。
 - 图片和截图只写入 Obsidian 附件嵌入或下载失败原因，不再追加原始图片来源 URL。
-- README 同步更新保存格式、图片保存行为和当前版本说明。
+- README 同步更新页面剪藏、保存格式、图片保存行为和当前版本说明。
 
 ### 实现方式
-- `src/host/markdown.ts` 将 URL、selection、image 的公共标题结构改为“链接标题 + 时间戳子项”。
+- `extension/page-clip.js` 注入页面侧提取逻辑，优先读取 `article/main/[role=main]`，移除脚本、导航、表单等噪声，并把常见 DOM 转成 Markdown。
+- `extension/context-menu.js` 调整右键菜单创建顺序，并把 `save-url` 改为发送 `page` 剪藏请求。
+- `src/host/request-schema.ts`、`types.ts`、`vault-writer.ts` 支持 `page` 请求；页面图片复用安全下载边界写入附件，再替换为 Obsidian 本地嵌入。
+- `src/host/markdown.ts` 将 URL、selection、image 的公共标题结构改为“链接标题 + 时间戳子项”，并为 page 输出带来源 frontmatter 的单独 Markdown 文档。
 - 移除 image 条目中的 `来源图片：...` 输出；附件下载、失败兜底和图片安全校验保持不变。
-- `tests/markdown.test.ts`、`tests/run-tests.mjs` 更新格式断言，并增加图片条目不包含来源 URL 的回归断言。
+- `tests/markdown.test.ts`、`tests/run-tests.mjs` 更新格式断言，并增加页面剪藏单独文档、图片本地化、右键菜单顺序和图片条目不包含来源 URL 的回归断言。
 - `package.json` 与 `extension/manifest.json` 版本同步为 `0.2.5`。
 
 ### 验证方式
@@ -63,9 +68,9 @@
 - `npm run release:zip`
 
 ### 已知限制
+- 页面剪藏使用内置 DOM 转 Markdown 启发式，不新增 Readability/Turndown 依赖；复杂网页可能需要后续继续优化正文抽取质量。
 - 本次只调整新写入条目的格式，不迁移或重写既有日记内容。
-- 同一链接自动合并/去重仍由后续整理或 Obsidian 侧处理，本轮不改变追加写入模型。
-
+- 同一链接自动合并/去重仍由后续整理或 Obsidian 侧处理，本轮不改变轻量条目的追加写入模型。
 ---
 
 ## v0.2.4 - 2026-05-07

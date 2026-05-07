@@ -43,6 +43,10 @@ export function assertHostRequest(value: unknown): HostRequest {
     return sanitizeUrlCapture(value);
   }
 
+  if (value.type === "page") {
+    return sanitizePageCapture(value);
+  }
+
   if (value.type === "selection") {
     return {
       type: "selection",
@@ -115,6 +119,43 @@ function sanitizeUrlCapture(value: Record<string, unknown>): Extract<CaptureMess
     pageUrl: validatePageUrl(value.pageUrl, "pageUrl"),
     capturedAt: validateIsoTimestamp(value.capturedAt)
   };
+}
+
+function sanitizePageCapture(value: Record<string, unknown>): Extract<CaptureMessage, { type: "page" }> {
+  return {
+    type: "page",
+    title: sanitizeTitle(value.title),
+    pageUrl: validatePageUrl(value.pageUrl, "pageUrl"),
+    markdown: validateNonEmptyString(value.markdown, "markdown").trim(),
+    images: sanitizePageImages(value.images),
+    capturedAt: validateIsoTimestamp(value.capturedAt)
+  };
+}
+
+function sanitizePageImages(value: unknown): Array<{ url: string; alt?: string }> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const images: Array<{ url: string; alt?: string }> = [];
+  const seen = new Set<string>();
+  for (const image of value) {
+    if (!isRecord(image) || typeof image.url !== "string") {
+      continue;
+    }
+    try {
+      const url = validatePageUrl(image.url, "image.url");
+      if (seen.has(url)) {
+        continue;
+      }
+      seen.add(url);
+      const alt = typeof image.alt === "string" ? image.alt.trim().slice(0, 300) : "";
+      images.push(alt ? { url, alt } : { url });
+    } catch {
+      // Ignore unsafe or malformed page image references instead of rejecting the whole page clip.
+    }
+  }
+  return images;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

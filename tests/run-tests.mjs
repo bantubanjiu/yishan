@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -28,6 +28,15 @@ function localIso(year, month, day, hour, minute, second = 0) {
 
 function localDatePath(vaultPath, year, month, day) {
   return path.join(vaultPath, "Inbox", `${year}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}.md`);
+}
+
+async function pathExists(targetPath) {
+  try {
+    await access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function localTime(isoDate) {
@@ -196,6 +205,26 @@ test("formats image download failure without writing the source image URL", () =
     "- [Image Page](https://example.com/page)\n\n  - 06:33\n  图片下载失败：HTTP 403\n"
   );
   assert.doesNotMatch(entry, /来源图片|https:\/\/cdn\.example\.com\/image\.jpg/);
+});
+
+test("formats a clipped page as a standalone markdown document with source metadata", () => {
+  const entry = formatCaptureEntry(
+    {
+      type: "page",
+      title: "Article [Docs]",
+      pageUrl: "https://example.com/article",
+      markdown: "# Article\n\nUseful paragraph.",
+      images: [],
+      capturedAt: localIso(2026, 5, 7, 10, 15)
+    },
+    { standalone: true }
+  );
+
+  assert.equal(
+    entry,
+    "---\ntitle: \"Article [Docs]\"\nsource: \"https://example.com/article\"\nclipped_at: \"2026-05-07T02:15:00.000Z\"\n---\n\n# Article\n\nUseful paragraph.\n"
+  );
+  assert.doesNotMatch(entry, /```text/);
 });
 
 test("creates the daily inbox note when it does not exist", async () => {
@@ -626,6 +655,109 @@ test("rejects non-image and oversized data URLs without blocking markdown writes
   assert.doesNotMatch(content, /来源图片|https:\/\/cdn\.example\.com/);
 });
 
+test("writes clipped pages to standalone notes without updating the daily inbox", async () => {
+  const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
+
+  const result = await writeCaptureToVault(
+    {
+      type: "page",
+      title: "Example Article",
+      pageUrl: "https://example.com/articles/1",
+      markdown: "# Example Article\n\nUseful body.",
+      images: [],
+      capturedAt: localIso(2026, 5, 7, 10, 15)
+    },
+    {
+      vaultPath,
+      inboxDir: "Inbox",
+      attachmentsDir: "Inbox/attachments"
+    }
+  );
+
+  assert.equal(result.notePath, path.join(vaultPath, "Inbox", "Example Article-20260507-101500.md"));
+  assert.equal(await pathExists(localDatePath(vaultPath, 2026, 5, 7)), false);
+  assert.equal(
+    await readFile(result.notePath, "utf8"),
+    "---\ntitle: \"Example Article\"\nsource: \"https://example.com/articles/1\"\nclipped_at: \"2026-05-07T02:15:00.000Z\"\n---\n\n# Example Article\n\nUseful body.\n"
+  );
+});
+
+test("localizes clipped page images and replaces markdown references with Obsidian embeds", async () => {
+  const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
+
+  const result = await writeCaptureToVault(
+    {
+      type: "page",
+      title: "Image Article",
+      pageUrl: "https://example.com/article",
+      markdown: "# Image Article\n\n![Hero](https://cdn.example.com/hero.png)\n\n![Inline](https://cdn.example.com/inline.jpg)",
+      images: [
+        { url: "https://cdn.example.com/hero.png", alt: "Hero" },
+        { url: "https://cdn.example.com/inline.jpg", alt: "Inline" }
+      ],
+      capturedAt: localIso(2026, 5, 7, 10, 20)
+    },
+    {
+      vaultPath,
+      inboxDir: "Inbox",
+      attachmentsDir: "Inbox/attachments"
+    },
+    {
+      fetchBinary: async (url) => ({
+        bytes: url.endsWith("hero.png") ? new Uint8Array([1, 2, 3]) : new Uint8Array([4, 5, 6]),
+        contentType: url.endsWith("hero.png") ? "image/png" : "image/jpeg"
+      })
+    }
+  );
+
+  assert.equal(result.attachments?.length, 2);
+  assert.match(result.attachments?.[0] ?? "", /^20260507-102000-[a-f0-9]{8}\.png$/);
+  assert.match(result.attachments?.[1] ?? "", /^20260507-102000-[a-f0-9]{8}\.jpg$/);
+  assert.deepEqual(
+    new Uint8Array(await readFile(path.join(vaultPath, "Inbox", "attachments", result.attachments[0]))),
+    new Uint8Array([1, 2, 3])
+  );
+  assert.deepEqual(
+    new Uint8Array(await readFile(path.join(vaultPath, "Inbox", "attachments", result.attachments[1]))),
+    new Uint8Array([4, 5, 6])
+  );
+
+  const content = await readFile(result.notePath, "utf8");
+  assert.match(content, new RegExp(`!\\[\\[${result.attachments[0]}\\]\\]`));
+  assert.match(content, new RegExp(`!\\[\\[${result.attachments[1]}\\]\\]`));
+  assert.doesNotMatch(content, /https:\/\/cdn\.example\.com\/(?:hero|inline)/);
+});
+
+test("keeps clipped page markdown writable when image localization fails", async () => {
+  const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
+
+  const result = await writeCaptureToVault(
+    {
+      type: "page",
+      title: "Broken Image Article",
+      pageUrl: "https://example.com/article",
+      markdown: "# Broken\n\n![Hero](https://cdn.example.com/hero.png)",
+      images: [{ url: "https://cdn.example.com/hero.png", alt: "Hero" }],
+      capturedAt: localIso(2026, 5, 7, 10, 21)
+    },
+    {
+      vaultPath,
+      inboxDir: "Inbox",
+      attachmentsDir: "Inbox/attachments"
+    },
+    {
+      fetchBinary: async () => {
+        throw new Error("HTTP 403");
+      }
+    }
+  );
+
+  assert.equal(result.attachments?.length ?? 0, 0);
+  const content = await readFile(result.notePath, "utf8");
+  assert.match(content, /!\[Hero\]\(https:\/\/cdn\.example\.com\/hero\.png\)/);
+  assert.match(content, /> 图片本地化失败：\[Hero\]\(https:\/\/cdn\.example\.com\/hero\.png\) - HTTP 403/);
+});
+
 test("rejects inbox paths that escape the configured vault", async () => {
   const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
 
@@ -720,6 +852,49 @@ test("host request schema sanitizes URL captures and falls back empty titles to 
     pageUrl: "https://example.com/page",
     capturedAt: "2026-05-07T00:00:00.000Z"
   });
+});
+
+test("host request schema sanitizes clipped page captures", () => {
+  const sanitized = assertHostRequest({
+    type: "page",
+    title: " Article ",
+    pageUrl: "https://example.com/article",
+    markdown: "  # Article\n\nBody.  ",
+    images: [
+      { url: "https://cdn.example.com/hero.png", alt: " Hero " },
+      { url: "javascript:alert(1)", alt: "Bad" },
+      { url: "https://cdn.example.com/inline", alt: 42 },
+      { src: "https://cdn.example.com/ignored.png" }
+    ],
+    capturedAt: "2026-05-07T00:00:00.000Z",
+    extra: "ignored"
+  });
+
+  assert.deepEqual(sanitized, {
+    type: "page",
+    title: "Article",
+    pageUrl: "https://example.com/article",
+    markdown: "# Article\n\nBody.",
+    images: [
+      { url: "https://cdn.example.com/hero.png", alt: "Hero" },
+      { url: "https://cdn.example.com/inline" }
+    ],
+    capturedAt: "2026-05-07T00:00:00.000Z"
+  });
+});
+
+test("host request schema rejects clipped pages without markdown body", () => {
+  assert.throws(
+    () =>
+      assertHostRequest({
+        type: "page",
+        title: "Blank",
+        pageUrl: "https://example.com/article",
+        markdown: "   ",
+        capturedAt: "2026-05-07T00:00:00.000Z"
+      }),
+    /markdown/
+  );
 });
 
 test("host request schema rejects unsafe page URLs and invalid timestamps", () => {
@@ -1063,6 +1238,26 @@ test("extension manifest exposes popup and keyboard commands", async () => {
   assert.equal(manifest.commands["capture-screenshot-area"].suggested_key.default, "Alt+Shift+X");
 });
 
+test("context menu places screenshot above clipped page save and page save builds a page clip", async () => {
+  const contextMenu = await readFile(new URL("../extension/context-menu.js", import.meta.url), "utf8");
+  const pageClipper = await readFile(new URL("../extension/page-clip.js", import.meta.url), "utf8");
+
+  assert.ok(contextMenu.indexOf('id: "save-screenshot"') < contextMenu.indexOf('id: "save-url"'));
+  assert.match(contextMenu, /from "\.\/page-clip\.js"/);
+  assert.match(contextMenu, /buildPageClip\(tab\)/);
+  assert.match(pageClipper, /type:\s*"page"/);
+});
+
+test("page clipper extracts readable markdown and absolute image URLs", async () => {
+  const pageClipper = await readFile(new URL("../extension/page-clip.js", import.meta.url), "utf8");
+
+  assert.match(pageClipper, /querySelector\("article,\s*main,\s*\[role='main'\]"\)/);
+  assert.match(pageClipper, /script,\s*style,\s*noscript,\s*nav,\s*header,\s*footer,\s*form,\s*iframe/);
+  assert.match(pageClipper, /new URL\(value,\s*document\.baseURI\)/);
+  assert.match(pageClipper, /nodeToMarkdown/);
+  assert.match(pageClipper, /images/);
+});
+
 test("extension background gates gesture injection behind explicit enablement and active-tab sync", async () => {
   const background = await readFile(new URL("../extension/background.js", import.meta.url), "utf8");
 
@@ -1153,6 +1348,7 @@ test("host module structure separates request schema, downloads, rendering, file
   assert.match(vaultWriter, /from "\.\/image-downloader\.ts"/);
   assert.match(vaultWriter, /from "\.\/filename\.ts"/);
   assert.match(vaultWriter, /from "\.\/markdown-renderer\.ts"/);
+  assert.match(vaultWriter, /writePageCaptureToVault/);
 });
 
 test("gesture selection path reuses rich selection markdown before saving", async () => {
@@ -1218,6 +1414,9 @@ test("project metadata, CI, README, and changelog describe v0.2.5 capture format
   assert.match(gitignore, /^dist\/$/m);
   assert.match(readme, /最新更新：v0\.2\.5/);
   assert.match(readme, /0\.2\.5/);
+  assert.match(readme, /保存页面剪藏/);
+  assert.match(readme, /单独 Markdown 文档/);
+  assert.match(readme, /不再写入当天 Inbox 日记/);
   assert.match(readme, /链接标题 \+ 下方时间戳/);
   assert.match(readme, /不再追加原始图片 URL/);
   assert.match(readme, /scripts\/diagnose\.ps1/);
@@ -1228,6 +1427,8 @@ test("project metadata, CI, README, and changelog describe v0.2.5 capture format
   assert.match(readme, /富 Markdown/);
   assert.match(readme, /release zip/);
   assert.match(changelog, /## v0\.2\.5 - 2026-05-07/);
+  assert.match(changelog, /页面剪藏/);
+  assert.match(changelog, /单独 Markdown 文档/);
   assert.match(changelog, /链接标题在上、时间戳在下/);
   assert.match(changelog, /不再追加原始图片来源 URL/);
 });

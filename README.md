@@ -5,7 +5,7 @@
 
 **把网页里的灵感，右键静默搬进 Obsidian。**
 
-Windows/macOS + Chrome/Edge 本地网页采集器：保存 URL、选中文本、图片、框选截图和当前窗口多标签到 Obsidian 当天 Inbox 日记。
+Windows/macOS + Chrome/Edge 本地网页采集器：把页面剪藏、选中文本、图片、框选截图和当前窗口多标签保存到 Obsidian；页面剪藏生成单独 Markdown 文档，其他轻量采集继续写入当天 Inbox。
 
 [![Version](https://img.shields.io/badge/version-0.2.5-2563eb)](./版本记录README.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%2F%20macOS-0078d4)](#系统要求)
@@ -19,9 +19,9 @@ Windows/macOS + Chrome/Edge 本地网页采集器：保存 URL、选中文本、
 
 ## 项目简介
 
-移山是一个本地优先的轻量 Web Clipper：不走云端服务，不弹复杂表单，浏览器扩展通过 Native Messaging 调用本机 Node Host，直接把采集结果追加到 Obsidian Vault 的当天 Inbox Markdown。
+移山是一个本地优先的轻量 Web Clipper：不走云端服务，不弹复杂表单，浏览器扩展通过 Native Messaging 调用本机 Node Host，直接写入 Obsidian Vault。保存页面剪藏会尽量提取正文 Markdown、下载页面图片并生成单独 Markdown 文档；选中文本、图片、截图和多标签链接继续使用当天 Inbox 轻量记录。
 
-适合高频收集：网页链接、选中文本、网页图片、局部截图，以及当前窗口多个普通标签页。保存条目保持稳定格式：
+适合高频收集：完整页面、选中文本、网页图片、局部截图，以及当前窗口多个普通标签页。轻量保存条目保持稳定格式：
 
 ```markdown
 - [页面标题](页面URL)
@@ -33,6 +33,7 @@ Windows/macOS + Chrome/Edge 本地网页采集器：保存 URL、选中文本、
 
 ## 最新更新：v0.2.5
 
+- 保存页面改为页面剪藏：提取正文 Markdown、尽量本地化页面图片，并生成单独 Markdown 文档，不再写入当天 Inbox 日记。
 - 保存条目改为“链接标题 + 下方时间戳”结构，便于同一天内按同一链接归类整理。
 - 选中文本的代码块紧跟时间戳写入，保留自动语言识别和安全 fenced code block。
 - 图片/截图只写 Obsidian 附件嵌入或失败原因，不再额外记录原始图片来源 URL。
@@ -42,12 +43,12 @@ Windows/macOS + Chrome/Edge 本地网页采集器：保存 URL、选中文本、
 
 | 能力 | 说明 |
 | --- | --- |
-| 保存页面 URL | 页面空白处右键、Popup 或快捷键，一键追加当前页面标题和链接。 |
+| 保存页面剪藏 | 页面空白处右键会提取正文、链接、列表、代码块、表格和图片，尽量把图片本地化后生成单独 Markdown 文档。 |
 | 保存选中文本 | 选中文本后右键保存；可在“安全纯文本”和“富 Markdown”模式间切换；也可启用长按 Alt/Ctrl/Shift/Meta 后拖选自动保存。 |
 | 代码块识别 | 优先读取网页代码块语言，并自动识别 JSON/HTML/CSS/JS/TS/Python/Shell/Markdown，失败回退 `text`。 |
 | 保存图片 | 图片右键保存；Native Host 校验图片类型、10 秒超时、20MB 上限；成功只嵌入附件，失败只记录失败原因。 |
 | 框选/视口截图 | 右键、Popup 或快捷键触发后拖拽选择可见区域；Popup 也可直接保存当前视口截图。 |
-| 多标签快速保存 | Popup 或快捷键用单次 Native Message 保存当前窗口全部普通 `http/https/file` 标签页，跳过浏览器内部页。 |
+| 多标签快速保存 | Popup 或快捷键用单次 Native Message 保存当前窗口全部普通 `http/https/file` 标签页链接，跳过浏览器内部页。 |
 | 本地路径打开 | Popup 可打开今天 Inbox、附件目录、Vault 根目录和配置文件。 |
 | 拖选生命周期同步 | 启用拖选保存后，扩展会在标签切换、页面刷新、窗口重新聚焦后同步注入状态。 |
 | 本地阅读器支持 | 支持保存 `file://` 本地页面/文本链接；Chrome PDF 阅读器可保存文件链接，选区能力受浏览器限制。 |
@@ -139,8 +140,8 @@ bash ./scripts/install-native-host-macos.sh --extension-id "<扩展ID>" --snapsh
 | 字段 | 默认值 | 说明 |
 | --- | --- | --- |
 | `vaultPath` | 无 | Obsidian Vault 根目录，必须存在。 |
-| `inboxDir` | `Inbox` | 日记 Markdown 写入目录，必须位于 Vault 内。 |
-| `attachmentsDir` | `Inbox/attachments` | 图片/截图附件目录，必须位于 Vault 内。 |
+| `inboxDir` | `Inbox` | 当天日记和页面剪藏单独文档的写入目录，必须位于 Vault 内。 |
+| `attachmentsDir` | `Inbox/attachments` | 图片、截图和页面剪藏本地化图片附件目录，必须位于 Vault 内。 |
 | `selectionModifier` | `Alt` | 拖选自动保存触发键，可选 `Alt`/`Ctrl`/`Shift`/`Meta`。 |
 | `selectionSaveMode` | `plain` | 选中文本保存模式：`plain` 为安全纯文本，`rich` 为富 Markdown，失败时回退纯文本。 |
 | `selectionGestureEnabled` | `false` | 是否启用长按触发键后拖选自动保存。 |
@@ -149,15 +150,19 @@ bash ./scripts/install-native-host-macos.sh --extension-id "<扩展ID>" --snapsh
 
 - 左键点击插件图标：打开 Popup，可保存当前页、保存当前窗口全部普通标签页、框选截图、当前视口截图、PDF 链接、修改路径和选区触发键。
 - Popup 的路径按钮可打开今天 Inbox、附件目录、Vault 根目录和配置文件；路径不存在或越界时 Native Host 会返回明确错误。
-- 页面空白处右键：保存当前页面 URL。
+- 页面空白处右键：保存当前页面剪藏。扩展会优先读取 `article/main/[role=main]`，回退正文，移除脚本/导航/表单等噪声，生成单独 Markdown 文档；该操作不再写入当天 Inbox 日记。
 - 选中文本右键：保存选中文本和页面链接；默认用安全纯文本，切换到富 Markdown 后会尽量保留标题、列表、链接、引用、代码块和图片，失败时回退纯文本。
 - 长按 Alt 后拖选文本：需先在 Popup/选项页启用；显示蓝色高亮框，松开鼠标后自动保存选区；触发键可改为 Ctrl/Shift/Meta。
 - 图片上右键：下载图片并保存为附件；日记里只嵌入附件，不再追加原始图片 URL。非图片响应、超时或超过 20MB 会记录失败原因，不阻断正文保存。
-- 页面右键或快捷键 `Alt+Shift+X`：框选截图并保存。
+- 右键菜单中“框选截图保存到 Obsidian”位于“保存当前页面剪藏到 Obsidian”上方；也可用快捷键 `Alt+Shift+X` 框选截图并保存。
 - 快捷键 `Alt+Shift+S`：用单次 Native Message 保存当前窗口全部普通 `http/https/file` 标签。快捷键可在 `chrome://extensions/shortcuts` 中自定义。
 - 修改 Vault 路径时点击“选择文件夹”，Native Host 会弹出系统文件夹选择器。
 
 ## 常见问题
+
+### 保存页面和保存标签页有什么区别？
+
+保存页面剪藏会生成一个单独 Markdown 文档，包含 YAML 来源信息、正文 Markdown 和尽量本地化后的图片；它不再更新 `Inbox/YYYY-MM-DD.md`。保存当前窗口多标签页仍只保存标题和链接，用于快速稍后阅读。
 
 ### 为什么保存标题是链接，时间戳在下一行？
 
@@ -210,6 +215,7 @@ bash ./scripts/diagnose-macos.sh "<扩展ID>"
 ├─ extension/                 # Chrome/Edge 扩展
 │  ├─ background.js            # 服务工作线程入口和事件注册
 │  ├─ context-menu.js          # 右键菜单
+│  ├─ page-clip.js             # 页面正文剪藏和 DOM 转 Markdown
 │  ├─ commands.js              # 快捷键
 │  ├─ native-client.js         # Native Messaging 客户端
 │  ├─ screenshot.js            # 框选/视口截图

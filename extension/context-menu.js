@@ -1,9 +1,15 @@
+import { buildPageClip } from "./page-clip.js";
 import { getSelectionAsMarkdown } from "./selection-markdown.js";
 
 export function createContextMenus() {
   chrome.contextMenus.create({
+    id: "save-screenshot",
+    title: "框选截图保存到 Obsidian",
+    contexts: ["page", "selection", "image", "editable"]
+  });
+  chrome.contextMenus.create({
     id: "save-url",
-    title: "保存当前页面到 Obsidian",
+    title: "保存当前页面剪藏到 Obsidian",
     contexts: ["page"]
   });
   chrome.contextMenus.create({
@@ -16,11 +22,6 @@ export function createContextMenus() {
     title: "保存图片到 Obsidian",
     contexts: ["image"]
   });
-  chrome.contextMenus.create({
-    id: "save-screenshot",
-    title: "框选截图保存到 Obsidian",
-    contexts: ["page", "selection", "image", "editable"]
-  });
 }
 
 export async function buildCaptureMessage(info, tab, config, buildScreenshotCapture) {
@@ -31,10 +32,7 @@ export async function buildCaptureMessage(info, tab, config, buildScreenshotCapt
   };
 
   if (info.menuItemId === "save-url") {
-    return {
-      type: "url",
-      ...base
-    };
+    return buildPageClip(tab);
   }
 
   if (info.menuItemId === "save-selection") {
