@@ -1219,7 +1219,8 @@ test("batch-save-tabs returns per-tab failures without blocking successful saves
 test("host request handler opens today inbox through Obsidian URI only", async () => {
   const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
   const configPath = path.join(await mkdtemp(path.join(tmpdir(), "clipper-config-")), "config.json");
-  const inboxPath = localDatePath(vaultPath, 2026, 5, 7);
+  const today = new Date();
+  const inboxPath = localDatePath(vaultPath, today.getFullYear(), today.getMonth() + 1, today.getDate());
   await mkdir(path.dirname(inboxPath), { recursive: true });
   await writeFile(inboxPath, "# Inbox\n", "utf8");
   await writeFile(
