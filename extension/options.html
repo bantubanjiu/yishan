@@ -10,8 +10,8 @@
     <main class="settings-shell">
       <header class="hero">
         <p class="eyebrow">Obsidian Web Clipper</p>
-        <h1>移山设置</h1>
-        <p class="hint">管理 Vault 路径与选区触发键。设置会写入本地 Native Host 配置文件。</p>
+        <h1>完整设置与诊断</h1>
+        <p class="hint">管理保存位置、摘录方式和快捷入口。Popup 负责快速采集，这里负责完整配置。</p>
       </header>
 
       <section class="panel" aria-label="保存设置">
@@ -53,6 +53,28 @@
         </div>
 
         <p id="status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="panel guide-panel" aria-label="快捷键与入口">
+        <h2>快捷键与入口</h2>
+        <div class="guide-grid">
+          <article>
+            <h3>快速采集</h3>
+            <p>Popup 中可以保存当前页面、当前窗口标签、框选截图和当前视口截图。</p>
+          </article>
+          <article>
+            <h3>右键菜单</h3>
+            <p>页面空白处右键保存页面剪藏，选中文本右键保存摘录，图片右键保存图片。</p>
+          </article>
+          <article>
+            <h3>键盘快捷键</h3>
+            <p><kbd>Alt+Shift+S</kbd> 保存当前窗口标签；<kbd>Alt+Shift+X</kbd> 进入框选截图。</p>
+          </article>
+          <article>
+            <h3>常见限制</h3>
+            <p>浏览器内部页无法注入；file:// 页面需要开启扩展的“允许访问文件网址”；当前视口截图不是滚动长截图。</p>
+          </article>
+        </div>
       </section>
     </main>
 

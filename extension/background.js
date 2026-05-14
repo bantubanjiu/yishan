@@ -3,6 +3,7 @@ import { normalizeConfig, normalizeConfigResponse } from "./config-client.js";
 import { DEFAULT_SETTINGS } from "./constants.js";
 import { registerCommands } from "./commands.js";
 import { buildCaptureMessage, createContextMenus } from "./context-menu.js";
+import { buildPageClip } from "./page-clip.js";
 import { syncSelectionGestureForActiveTab, syncSelectionGestureForTab } from "./gesture.js";
 import { saveCapture, sendNativeMessage } from "./native-client.js";
 import { captureAndSaveScreenshot, buildScreenshotCapture } from "./screenshot.js";
@@ -92,6 +93,13 @@ async function handleRuntimeMessage(message, sender) {
 
   if (message.type === "save-current-window") {
     return saveCurrentWindowTabs();
+  }
+
+  if (message.type === "save-current-page") {
+    const tab = await getActiveTab();
+    const capture = await buildPageClip(tab);
+    const response = await saveCapture(capture);
+    return { ok: true, response };
   }
 
   if (message.type === "capture-screenshot") {

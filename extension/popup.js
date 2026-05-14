@@ -6,94 +6,76 @@ const DEFAULT_CONFIG = {
   selectionSaveMode: "plain"
 };
 
-const fields = {
-  vaultPath: document.querySelector("#vaultPath"),
-  selectionModifier: document.querySelector("#selectionModifier"),
-  selectionSaveMode: document.querySelector("#selectionSaveMode"),
-  selectionGestureEnabled: document.querySelector("#selectionGestureEnabled")
-};
-
 const controls = {
+  saveCurrentPage: document.querySelector("#saveCurrentPage"),
   saveCurrentWindow: document.querySelector("#saveCurrentWindow"),
   captureScreenshot: document.querySelector("#captureScreenshot"),
   captureViewport: document.querySelector("#captureViewport"),
-  chooseVault: document.querySelector("#chooseVault"),
   openTodayInbox: document.querySelector("#openTodayInbox"),
-  saveConfig: document.querySelector("#saveConfig"),
+  openOptions: document.querySelector("#openOptions"),
   reload: document.querySelector("#reload"),
   openShortcuts: document.querySelector("#openShortcuts")
 };
 
-const statusEl = document.querySelector("#status");
-const allButtons = Array.from(document.querySelectorAll("button"));
-let hiddenConfig = {
-  inboxDir: "Inbox",
-  attachmentsDir: "Inbox\\attachments"
+const summary = {
+  vaultState: document.querySelector("#vaultState"),
+  gestureSummary: document.querySelector("#gestureSummary"),
+  modeSummary: document.querySelector("#modeSummary")
 };
 
-controls.saveCurrentWindow.addEventListener("click", () => runSaveAction("正在保存全部标签...", saveCurrentWindow));
+const statusEl = document.querySelector("#status");
+const allButtons = Array.from(document.querySelectorAll("button"));
+let currentConfig = { ...DEFAULT_CONFIG };
+
+controls.saveCurrentPage.addEventListener("click", () => runSaveAction("正在保存当前页面...", saveCurrentPage));
+controls.saveCurrentWindow.addEventListener("click", () => runSaveAction("正在保存当前窗口标签...", saveCurrentWindow));
 controls.captureScreenshot.addEventListener("click", () => runSaveAction("请在页面中拖拽选择截图区域...", captureScreenshot));
-controls.captureViewport.addEventListener("click", () => runSaveAction("正在保存整屏截图...", captureViewport));
-controls.chooseVault.addEventListener("click", () => runAction("正在打开文件夹选择...", chooseVaultFolder));
+controls.captureViewport.addEventListener("click", () => runSaveAction("正在保存当前视口...", captureViewport));
 controls.openTodayInbox.addEventListener("click", () => runAction("正在打开今天 Inbox...", () => openPathTarget("today-inbox")));
-controls.saveConfig.addEventListener("click", () => runAction("正在保存设置...", saveConfig));
-controls.reload.addEventListener("click", () => runAction("正在读取设置...", loadConfig));
+controls.openOptions.addEventListener("click", () => runAction("正在打开完整设置...", openOptionsPage));
+controls.reload.addEventListener("click", () => runAction("正在读取状态...", loadConfig));
 controls.openShortcuts.addEventListener("click", () => runAction("正在打开快捷键设置...", openShortcuts));
 
-await runAction("正在读取设置...", loadConfig, { quietSuccess: true });
+await runAction("正在读取状态...", loadConfig, { quietSuccess: true });
+
+async function saveCurrentPage() {
+  const response = await sendAction({ type: "save-current-page" });
+  assertOk(response, "保存当前页面失败");
+  setStatus("已保存：当前页面 → Obsidian。");
+}
 
 async function saveCurrentWindow() {
   const response = await sendAction({ type: "save-current-window" }, () => fallbackSaveCurrentWindow());
   assertOk(response, "保存窗口失败");
   if (typeof response.saved === "number" && typeof response.attempted === "number") {
     const failed = Number(response.failed || 0);
-    setStatus(failed > 0 ? `已保存 ${response.saved}/${response.attempted} 个标签，失败 ${failed} 个。` : `当前窗口 ${response.saved} 个标签已保存。`, failed > 0);
+    setStatus(
+      failed > 0 ? `已保存 ${response.saved}/${response.attempted} 个标签，失败 ${failed} 个。` : `已保存：当前窗口 ${response.saved} 个标签。`,
+      failed > 0
+    );
     return;
   }
-  setStatus("当前窗口标签已保存。");
+  setStatus("已保存：当前窗口标签。");
 }
 
 async function captureScreenshot() {
   const response = await sendAction({ type: "capture-screenshot" });
   assertOk(response, "截图失败");
-  setStatus("截图已保存到 Obsidian。");
+  setStatus("已保存：框选截图 → Obsidian。");
 }
 
 async function captureViewport() {
   const response = await sendAction({ type: "capture-viewport-screenshot" });
   assertOk(response, "当前视口截图失败");
-  setStatus("当前视口截图已保存到 Obsidian。");
+  setStatus("已保存：当前视口截图 → Obsidian。");
 }
 
 async function loadConfig() {
   const response = await sendAction({ type: "get-config" }, () => sendNativeMessage({ type: "get-config" }));
   assertOk(response, "读取失败");
-  applyConfig(response.config || {});
-  setStatus("设置已读取。");
-}
-
-async function saveConfig() {
-  const config = readConfig();
-  if (!config.vaultPath) {
-    throw new Error("请填写 Obsidian Vault 路径。");
-  }
-  const response = await sendAction({ type: "set-config", config }, () => sendNativeMessage({ type: "set-config", config }));
-  assertOk(response, "保存失败");
-  setStatus("设置已保存。");
-}
-
-async function chooseVaultFolder() {
-  const response = await sendAction(
-    { type: "pick-folder", purpose: "vaultPath", initialPath: fields.vaultPath.value.trim() },
-    () => sendNativeMessage({ type: "pick-folder", purpose: "vaultPath", initialPath: fields.vaultPath.value.trim() })
-  );
-  assertOk(response, "选择文件夹失败");
-  const selectedPath = response.path || response.folderPath || response.vaultPath;
-  if (!selectedPath) {
-    throw new Error("没有返回文件夹路径。");
-  }
-  fields.vaultPath.value = selectedPath;
-  setStatus("已选择 Vault 路径，记得保存设置。");
+  currentConfig = normalizeConfig(response.config || {});
+  renderConfigSummary();
+  setStatus("状态已刷新。");
 }
 
 async function openPathTarget(target) {
@@ -102,32 +84,45 @@ async function openPathTarget(target) {
   setStatus("已请求系统打开路径。");
 }
 
+async function openOptionsPage() {
+  if (chrome.runtime.openOptionsPage) {
+    await chrome.runtime.openOptionsPage();
+    setStatus("已打开完整设置。");
+    return;
+  }
+  await chrome.tabs.create({ url: chrome.runtime.getURL("options.html") });
+  setStatus("已打开完整设置。");
+}
+
 async function openShortcuts() {
   const response = await sendAction({ type: "open-shortcuts" }, fallbackOpenShortcuts);
   assertOk(response, "打开快捷键设置失败");
   setStatus("已打开 Chrome 快捷键设置。");
 }
 
-function applyConfig(config) {
-  fields.vaultPath.value = config.vaultPath || DEFAULT_CONFIG.vaultPath;
-  hiddenConfig = {
-    inboxDir: config.inboxDir || hiddenConfig.inboxDir,
-    attachmentsDir: config.attachmentsDir || hiddenConfig.attachmentsDir
-  };
-  fields.selectionModifier.value = normalizeSelectionModifier(config.selectionModifier || config.gestureModifier);
-  fields.selectionSaveMode.value = config.selectionSaveMode === "rich" ? "rich" : DEFAULT_CONFIG.selectionSaveMode;
-  fields.selectionGestureEnabled.checked = config.selectionGestureEnabled === true;
+function renderConfigSummary() {
+  const vaultPath = currentConfig.vaultPath.trim();
+  summary.vaultState.textContent = vaultPath ? `已配置：${formatPathSummary(vaultPath)}` : "未配置，请打开完整设置";
+  summary.vaultState.classList.toggle("warning", !vaultPath);
+  summary.gestureSummary.textContent = currentConfig.selectionGestureEnabled
+    ? `已开启，长按 ${currentConfig.selectionModifier} 后拖选`
+    : "关闭，可在完整设置开启";
+  summary.modeSummary.textContent = currentConfig.selectionSaveMode === "rich" ? "富 Markdown" : "安全纯文本";
 }
 
-function readConfig() {
+function normalizeConfig(config) {
   return {
-    vaultPath: fields.vaultPath.value.trim(),
-    inboxDir: hiddenConfig.inboxDir,
-    attachmentsDir: hiddenConfig.attachmentsDir,
-    selectionModifier: normalizeSelectionModifier(fields.selectionModifier.value),
-    selectionSaveMode: fields.selectionSaveMode.value === "rich" ? "rich" : DEFAULT_CONFIG.selectionSaveMode,
-    selectionGestureEnabled: fields.selectionGestureEnabled.checked
+    vaultPath: typeof config.vaultPath === "string" ? config.vaultPath : DEFAULT_CONFIG.vaultPath,
+    selectionModifier: normalizeSelectionModifier(config.selectionModifier || config.gestureModifier),
+    selectionGestureEnabled: config.selectionGestureEnabled === true,
+    selectionSaveMode: config.selectionSaveMode === "rich" ? "rich" : DEFAULT_CONFIG.selectionSaveMode
   };
+}
+
+function formatPathSummary(path) {
+  const normalized = path.replace(/[\\/]+$/, "");
+  const parts = normalized.split(/[\\/]/).filter(Boolean);
+  return parts.at(-1) || normalized;
 }
 
 async function fallbackSaveCurrentWindow() {
@@ -145,14 +140,6 @@ async function fallbackSaveCurrentWindow() {
     failed: Number(response.failed || 0),
     failures: response.failures || []
   };
-}
-
-async function getActiveTab() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.url) {
-    throw new Error("没有找到当前活动标签页。");
-  }
-  return tab;
 }
 
 function buildUrlCapture(tab) {

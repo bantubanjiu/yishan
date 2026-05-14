@@ -1383,46 +1383,75 @@ test("extension background gates gesture injection behind explicit enablement an
   assert.doesNotMatch(gesture, /modifier:\s*DEFAULT_SETTINGS\.gestureModifier/);
 });
 
-test("extension popup keeps only requested actions and notifies save results", async () => {
+test("extension popup presents a capture console and keeps full settings in options", async () => {
   const popupHtml = await readFile(new URL("../extension/popup.html", import.meta.url), "utf8");
   const popupJs = await readFile(new URL("../extension/popup.js", import.meta.url), "utf8");
   const optionsHtml = await readFile(new URL("../extension/options.html", import.meta.url), "utf8");
   const optionsJs = await readFile(new URL("../extension/options.js", import.meta.url), "utf8");
+  const background = await readFile(new URL("../extension/background.js", import.meta.url), "utf8");
 
   for (const expected of [
-    "\u4fdd\u5b58\u5168\u90e8\u6807\u7b7e",
-    "\u6574\u5c4f\u622a\u56fe",
-    "\u6253\u5f00\u4eca\u5929 Inbox",
-    "selectionSaveMode",
-    "captureViewport"
+    "saveCurrentPage",
+    "保存当前页面",
+    "采集控制台",
+    "saveCurrentWindow",
+    "保存当前窗口标签",
+    "captureScreenshot",
+    "保存当前视口",
+    "vaultState",
+    "gestureSummary",
+    "modeSummary",
+    "更多保存方式",
+    "选中文本右键",
+    "图片右键",
+    "Alt\\+Shift\\+S",
+    "Alt\\+Shift\\+X",
+    "openOptions",
+    "打开今天 Inbox"
   ]) {
     assert.match(popupHtml, new RegExp(expected));
   }
 
   for (const removed of [
     "saveCurrentTab",
-    "\u4fdd\u5b58\u5f53\u524d\u9875",
     "savePdfLink",
     "\u4fdd\u5b58 PDF \u94fe\u63a5",
     "openAttachments",
     "openVaultRoot",
     "openConfigFile",
-    "inboxDir",
-    "attachmentsDir"
+    "id=\"vaultPath\"",
+    "id=\"chooseVault\"",
+    "id=\"selectionModifier\"",
+    "id=\"selectionSaveMode\"",
+    "id=\"selectionGestureEnabled\"",
+    "id=\"saveConfig\""
   ]) {
     assert.doesNotMatch(popupHtml, new RegExp(removed));
   }
 
+  assert.match(popupJs, /save-current-page/);
+  assert.match(popupJs, /chrome\.runtime\.openOptionsPage/);
+  assert.match(popupJs, /vaultState/);
+  assert.match(popupJs, /gestureSummary/);
+  assert.match(popupJs, /modeSummary/);
   assert.match(popupJs, /open-path/);
   assert.match(popupJs, /capture-viewport-screenshot/);
   assert.match(popupJs, /notifySaveResult/);
+  assert.doesNotMatch(popupJs, /set-config/);
+  assert.doesNotMatch(popupJs, /pick-folder/);
   assert.doesNotMatch(popupJs, /save-current-tab/);
   assert.doesNotMatch(popupJs, /save-pdf-link/);
+  assert.match(background, /message\.type === "save-current-page"/);
+  assert.match(background, /buildPageClip\(tab\)/);
+  assert.match(background, /saveCapture\(capture\)/);
+  assert.match(optionsHtml, /完整设置与诊断/);
+  assert.match(optionsHtml, /Obsidian Vault 路径/);
+  assert.match(optionsHtml, /快捷键与入口/);
+  assert.match(optionsHtml, /浏览器内部页无法注入/);
+  assert.match(optionsHtml, /当前视口截图不是滚动长截图/);
   assert.doesNotMatch(optionsHtml, /id="inboxDir"/);
   assert.doesNotMatch(optionsHtml, /id="attachmentsDir"/);
   assert.match(optionsJs, /selectionSaveMode/);
-  assert.match(popupJs, /hiddenConfig[.]inboxDir/);
-  assert.match(popupJs, /hiddenConfig[.]attachmentsDir/);
   assert.match(optionsJs, /hiddenConfig[.]inboxDir/);
   assert.match(optionsJs, /hiddenConfig[.]attachmentsDir/);
 });
