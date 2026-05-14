@@ -13,6 +13,7 @@ const fields = {
   selectionGestureEnabled: document.querySelector("#selectionGestureEnabled")
 };
 const statusEl = document.querySelector("#status");
+const shortcutSummary = document.querySelector("#shortcutSummary");
 const buttons = Array.from(document.querySelectorAll("button"));
 let hiddenConfig = {
   inboxDir: "Inbox",
@@ -35,6 +36,7 @@ async function loadConfig() {
   const response = await sendAction({ type: "get-config" }, () => sendNativeMessage({ type: "get-config" }));
   assertOk(response, "读取失败");
   applyConfig(response.config || {});
+  await renderShortcutSummary();
   setStatus("已读取当前设置。");
 }
 
@@ -68,6 +70,27 @@ async function openShortcuts() {
   const response = await sendAction({ type: "open-shortcuts" }, fallbackOpenShortcuts);
   assertOk(response, "打开快捷键设置失败");
   setStatus("已打开 Chrome 快捷键设置。");
+}
+
+async function renderShortcutSummary() {
+  try {
+    const commands = await chrome.commands.getAll();
+    const saveTabs = findCommandShortcut(commands, "quick-save-current-window");
+    const screenshot = findCommandShortcut(commands, "capture-screenshot-area");
+    const missing = [saveTabs, screenshot].filter((shortcut) => !shortcut).length;
+    shortcutSummary.textContent = missing
+      ? `${missing} 个未绑定或被占用，请打开 Chrome 快捷键设置。`
+      : `标签 ${saveTabs}；截图 ${screenshot}`;
+    shortcutSummary.classList.toggle("warning", missing > 0);
+  } catch {
+    shortcutSummary.textContent = "无法读取快捷键状态。";
+    shortcutSummary.classList.add("warning");
+  }
+}
+
+function findCommandShortcut(commands, name) {
+  const command = commands.find((item) => item.name === name);
+  return typeof command?.shortcut === "string" ? command.shortcut : "";
 }
 
 function applyConfig(config) {

@@ -11,6 +11,10 @@
     "scripting",
     "tabs"
   ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
   "options_page": "options.html",
   "action": {
     "default_popup": "popup.html"
@@ -18,17 +22,24 @@
   "commands": {
     "quick-save-current-window": {
       "suggested_key": {
-        "default": "Alt+Shift+S"
+        "default": "Ctrl+Shift+S"
       },
       "description": "Quick save current window tabs to Obsidian"
     },
     "capture-screenshot-area": {
       "suggested_key": {
-        "default": "Alt+Shift+X"
+        "default": "Ctrl+Shift+X"
       },
       "description": "Capture selected area to Obsidian"
     }
   },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["gesture-content-script.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "background": {
     "service_worker": "background.js",
     "type": "module"

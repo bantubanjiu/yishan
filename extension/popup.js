@@ -20,7 +20,8 @@ const controls = {
 const summary = {
   vaultState: document.querySelector("#vaultState"),
   gestureSummary: document.querySelector("#gestureSummary"),
-  modeSummary: document.querySelector("#modeSummary")
+  modeSummary: document.querySelector("#modeSummary"),
+  shortcutSummary: document.querySelector("#shortcutSummary")
 };
 
 const statusEl = document.querySelector("#status");
@@ -76,6 +77,7 @@ async function loadConfig() {
   assertOk(response, "读取失败");
   currentConfig = normalizeConfig(response.config || {});
   renderConfigSummary();
+  await renderShortcutSummary();
   setStatus("状态已刷新。");
 }
 
@@ -109,6 +111,27 @@ function renderConfigSummary() {
     ? `已开启，长按 ${currentConfig.selectionModifier} 后拖选`
     : "关闭，可在完整设置开启";
   summary.modeSummary.textContent = currentConfig.selectionSaveMode === "rich" ? "富 Markdown" : "安全纯文本";
+}
+
+async function renderShortcutSummary() {
+  try {
+    const commands = await chrome.commands.getAll();
+    const saveTabs = findCommandShortcut(commands, "quick-save-current-window");
+    const screenshot = findCommandShortcut(commands, "capture-screenshot-area");
+    const missing = [saveTabs, screenshot].filter((shortcut) => !shortcut).length;
+    summary.shortcutSummary.textContent = missing
+      ? `${missing} 个未绑定或被占用`
+      : `标签 ${saveTabs}；截图 ${screenshot}`;
+    summary.shortcutSummary.classList.toggle("warning", missing > 0);
+  } catch {
+    summary.shortcutSummary.textContent = "无法读取快捷键状态";
+    summary.shortcutSummary.classList.add("warning");
+  }
+}
+
+function findCommandShortcut(commands, name) {
+  const command = commands.find((item) => item.name === name);
+  return typeof command?.shortcut === "string" ? command.shortcut : "";
 }
 
 function normalizeConfig(config) {

@@ -52,6 +52,13 @@
           <button id="openShortcuts" class="link-button" type="button">打开 Chrome 快捷键设置</button>
         </div>
 
+        <dl class="shortcut-status" aria-label="快捷键状态">
+          <div>
+            <dt>快捷键状态</dt>
+            <dd id="shortcutSummary">正在读取...</dd>
+          </div>
+        </dl>
+
         <p id="status" role="status" aria-live="polite"></p>
       </section>
 
@@ -68,7 +75,7 @@
           </article>
           <article>
             <h3>键盘快捷键</h3>
-            <p><kbd>Alt+Shift+S</kbd> 保存当前窗口标签；<kbd>Alt+Shift+X</kbd> 进入框选截图。</p>
+            <p><kbd>Ctrl+Shift+S</kbd> 保存当前窗口标签；<kbd>Ctrl+Shift+X</kbd> 进入框选截图。若显示未绑定或被占用，请在 Chrome 快捷键设置中重新绑定。</p>
           </article>
           <article>
             <h3>常见限制</h3>

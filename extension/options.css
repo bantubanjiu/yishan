@@ -185,6 +185,34 @@ select:focus {
   margin-top: 8px;
 }
 
+.shortcut-status {
+  margin: 18px 0 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(100, 116, 139, 0.18);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.shortcut-status div {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 12px;
+}
+
+.shortcut-status dt {
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.shortcut-status dd {
+  margin: 0;
+  font-weight: 850;
+}
+
+.shortcut-status dd.warning {
+  color: #b45309;
+}
+
 button {
   min-height: 42px;
   padding: 10px 16px;

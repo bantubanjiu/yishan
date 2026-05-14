@@ -6,7 +6,7 @@
   "description": "Local Chrome/Edge clipper that silently appends web captures to an Obsidian inbox.",
   "scripts": {
     "test": "node tests/run-tests.mjs",
-    "check": "node --check extension/background.js && node --check extension/context-menu.js && node --check extension/page-clip.js && node --check extension/commands.js && node --check extension/native-client.js && node --check extension/screenshot.js && node --check extension/selection-markdown.js && node --check extension/gesture.js && node --check extension/batch-save.js && node --check extension/config-client.js && node tests/run-tests.mjs",
+    "check": "node --check extension/background.js && node --check extension/context-menu.js && node --check extension/page-clip.js && node --check extension/commands.js && node --check extension/native-client.js && node --check extension/screenshot.js && node --check extension/selection-markdown.js && node --check extension/gesture.js && node --check extension/gesture-content-script.js && node --check extension/batch-save.js && node --check extension/config-client.js && node tests/run-tests.mjs",
     "release:zip": "node scripts/build-release.mjs"
   },
   "engines": {

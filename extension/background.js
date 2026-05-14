@@ -114,6 +114,10 @@ async function handleRuntimeMessage(message, sender) {
     return { ok: true, response };
   }
 
+  if (message.type === "sync-selection-gesture") {
+    return { ok: await syncSelectionGestureForTab(sender.tab?.id, sender.tab) };
+  }
+
   if (message.type === "open-shortcuts") {
     await chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
     return { ok: true };

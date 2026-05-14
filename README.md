@@ -46,6 +46,7 @@ Windows/macOS + Chrome/Edge 本地网页采集器：把页面剪藏、选中文�
 - 选中文本继续保留自动语言识别和安全 fenced code block；富 Markdown 摘录会以“富文本摘录”时间标题写入。
 - 图片/截图在对应网页分组下只写 Obsidian 附件嵌入或失败原因，不再额外记录原始图片来源 URL。
 - 继续保留本机本地时间、并发写入文件锁、图片安全校验和失败不阻断写入。
+- 快捷键默认改为 `Ctrl+Shift+S` / `Ctrl+Shift+X`，Popup/设置页会显示是否未绑定或被占用；启用拖选后普通网页会在 Chrome 重启后自动同步，不再依赖先打开 Popup。为实现重启后自动同步，扩展会声明普通 `http/https` 页面访问权限。
 
 ## 功能清单
 
@@ -57,10 +58,10 @@ Windows/macOS + Chrome/Edge 本地网页采集器：把页面剪藏、选中文�
 | 保存图片 | 图片右键保存；Native Host 校验图片类型、10 秒超时、20MB 上限；成功只嵌入附件，失败只记录失败原因，并按来源网页聚合。 |
 | 框选/视口截图 | 右键、Popup 或快捷键触发后拖拽选择可见区域；Popup 也可直接保存当前视口截图，并按来源网页聚合。 |
 | 多标签快速保存 | Popup 或快捷键用单次 Native Message 保存当前窗口全部普通 `http/https/file` 标签页链接，跳过浏览器内部页。 |
-| 本地路径打开 | Popup 可打开今天 Inbox、附件目录、Vault 根目录和配置文件。 |
-| 拖选生命周期同步 | 启用拖选保存后，扩展会在标签切换、页面刷新、窗口重新聚焦后同步注入状态。 |
+| 本地路径打开 | Popup 可打开今天 Inbox，其他路径可通过配置文件或 Obsidian 侧访问。 |
+| 拖选生命周期同步 | 启用拖选保存后，普通 `http/https` 页面会随内容脚本自动请求同步；标签切换、页面刷新、窗口重新聚焦后也会补同步状态。 |
 | 本地阅读器支持 | 支持保存 `file://` 本地页面/文本链接；Chrome PDF 阅读器可保存文件链接，选区能力受浏览器限制。 |
-| Popup 设置 | 配置 Vault、Inbox、附件目录、拖选触发键和是否启用拖选自动保存。 |
+| Popup 状态 | Popup 提供快速采集、今天 Inbox 入口、设置入口、拖选状态和快捷键绑定状态；完整配置在选项页完成。 |
 | 本地静默写入 | Chrome/Edge 扩展通过 Native Messaging 调用本地 Node Host 写入 Vault。 |
 | 请求安全校验 | Host 端统一校验请求 schema，非法请求返回 `{ ok:false, error:"..." }`。 |
 | 追加保护 | 写入前处理空行和未闭合代码块，降低破坏当天日记的概率。 |
@@ -70,6 +71,7 @@ Windows/macOS + Chrome/Edge 本地网页采集器：把页面剪藏、选中文�
 
 - Windows 10/11 或 macOS（当前用户安装）。
 - Chrome 或 Microsoft Edge，Manifest V3 扩展。
+- 扩展需要普通 `http/https` 页面访问权限，用于在页面加载后同步拖选保存脚本。
 - Node.js `>= 24`。
 - 一个本地 Obsidian Vault。
 - Windows 使用 PowerShell 注册 Native Host；macOS 使用 bash + osascript。
@@ -156,14 +158,14 @@ bash ./scripts/install-native-host-macos.sh --extension-id "<扩展ID>" --snapsh
 
 ## 使用方式
 
-- 左键点击插件图标：打开 Popup，可保存当前页、保存当前窗口全部普通标签页、框选截图、当前视口截图、PDF 链接、修改路径和选区触发键。
-- Popup 的路径按钮可打开今天 Inbox、附件目录、Vault 根目录和配置文件；路径不存在或越界时 Native Host 会返回明确错误。
+- 左键点击插件图标：打开 Popup，可保存当前页、保存当前窗口全部普通标签页、框选截图、当前视口截图，查看拖选/快捷键状态，并进入完整设置。
+- Popup 的路径按钮可打开今天 Inbox；路径不存在或越界时 Native Host 会返回明确错误。
 - 页面空白处右键：保存当前页面剪藏。扩展会优先读取 `article/main/[role=main]`，回退正文，移除脚本/导航/表单等噪声，生成单独 Markdown 文档；该操作不再写入当天 Inbox 日记。
 - 选中文本右键：保存选中文本和页面链接；默认用安全纯文本，切换到富 Markdown 后会尽量保留标题、列表、链接、引用、代码块和图片，失败时回退纯文本；同一天同一网址的多次摘录会追加在同一个网页链接下面。
-- 长按 Alt 后拖选文本：需先在 Popup/选项页启用；显示蓝色高亮框，松开鼠标后自动保存选区；触发键可改为 Ctrl/Shift/Meta；写入规则同选中文本右键。
+- 长按 Alt 后拖选文本：需先在选项页启用；显示蓝色高亮框，松开鼠标后自动保存选区；触发键可改为 Ctrl/Shift/Meta；普通 `http/https` 页面会在 Chrome 重启后自动同步启用状态，`file://` 页面仍需开启“允许访问文件网址”；写入规则同选中文本右键。
 - 图片上右键：下载图片并保存为附件；日记里只嵌入附件，不再追加原始图片 URL。非图片响应、超时或超过 20MB 会记录失败原因，不阻断正文保存；同一天同一网址的图片会追加在该网页链接下面。
-- 右键菜单中“框选截图保存到 Obsidian”位于“保存当前页面剪藏到 Obsidian”上方；也可用快捷键 `Alt+Shift+X` 框选截图并保存。
-- 快捷键 `Alt+Shift+S`：用单次 Native Message 保存当前窗口全部普通 `http/https/file` 标签。快捷键可在 `chrome://extensions/shortcuts` 中自定义。
+- 右键菜单中“框选截图保存到 Obsidian”位于“保存当前页面剪藏到 Obsidian”上方；也可用快捷键 `Ctrl+Shift+X` 框选截图并保存。
+- 快捷键 `Ctrl+Shift+S`：用单次 Native Message 保存当前窗口全部普通 `http/https/file` 标签。快捷键可在 `chrome://extensions/shortcuts` 中自定义；如果 Popup 或设置页提示“未绑定或被占用”，请在该页面重新绑定。
 - 修改 Vault 路径时点击“选择文件夹”，Native Host 会弹出系统文件夹选择器。
 
 ## 常见问题
@@ -178,7 +180,7 @@ bash ./scripts/install-native-host-macos.sh --extension-id "<扩展ID>" --snapsh
 
 ### 拖选自动保存为什么在某些页面不可用？
 
-扩展只能在普通 `http/https/file` 页面注入脚本。`chrome://`、`edge://`、`about:`、商店页面等浏览器内部页会被跳过，避免报错。
+扩展只能在普通 `http/https/file` 页面注入脚本。`http/https` 页面会通过内容脚本在浏览器重启后自动请求同步；`file://` 页面需要在扩展详情页开启“允许访问文件网址”。`chrome://`、`edge://`、`about:`、商店页面等浏览器内部页会被跳过，避免报错。
 
 ### 图片保存失败会丢掉这条记录吗？
 

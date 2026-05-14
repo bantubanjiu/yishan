@@ -47,6 +47,8 @@
 
 ### 更新内容
 - 保存页面改为页面剪藏：右键保存当前页面时提取正文 Markdown、尽量本地化页面图片，并生成单独 Markdown 文档，不再写入当天 Inbox 日记。
+- 快捷键默认改为 `Ctrl+Shift+S` 保存当前窗口标签、`Ctrl+Shift+X` 框选截图，降低与输入法/系统快捷键冲突的概率；Popup 和设置页会显示快捷键是否未绑定或被占用。
+- 启用长按拖选保存后，普通 `http/https` 页面通过内容脚本在浏览器重启后自动请求同步，不再依赖先打开 Popup 才生效；为此扩展重新声明普通 `http/https` 页面访问权限。
 - 右键菜单中“框选截图保存到 Obsidian”移动到“保存当前页面剪藏到 Obsidian”上方。
 - 除页面剪藏外，URL、文字、富 Markdown、图片和截图改为同日同 URL 聚合：当天 Inbox 内只保留一个 `## [页面标题](页面URL)`，每次材料以 `### HH:mm 类型` 追加在该链接下。
 - 选中文本继续保存为安全 fenced code block；富 Markdown 摘录以“富文本摘录”时间标题写入。
@@ -55,6 +57,8 @@
 
 ### 实现方式
 - `extension/page-clip.js` 注入页面侧提取逻辑，优先读取 `article/main/[role=main]`，移除脚本、导航、表单等噪声，并把常见 DOM 转成 Markdown。
+- `extension/manifest.json` 增加 `gesture-content-script.js` 内容脚本、普通 `http/https` host permissions，并更新 Commands 默认键位；`extension/background.js` 新增 `sync-selection-gesture` runtime message，让页面加载后主动同步拖选启用状态。
+- `extension/popup.js`、`options.js` 使用 `chrome.commands.getAll()` 展示快捷键绑定状态，空快捷键会提示未绑定或被占用并引导打开快捷键设置。
 - `extension/context-menu.js` 调整右键菜单创建顺序，并把 `save-url` 改为发送 `page` 剪藏请求。
 - `src/host/request-schema.ts`、`types.ts`、`vault-writer.ts` 支持 `page` 请求；页面图片复用安全下载边界写入附件，再替换为 Obsidian 本地嵌入。
 - `src/host/markdown.ts` 输出网页分组标题和按类型命名的时间子标题；`src/host/vault-writer.ts` 在写入当天 Inbox 时查找同 URL 分组并追加到分组尾部。
@@ -71,6 +75,7 @@
 - 页面剪藏使用内置 DOM 转 Markdown 启发式，不新增 Readability/Turndown 依赖；复杂网页可能需要后续继续优化正文抽取质量。
 - 本次只调整新写入条目的格式，不迁移或重写既有日记内容。
 - 同一链接自动合并/去重仍由后续整理或 Obsidian 侧处理，本轮不改变轻量条目的追加写入模型。
+- 已安装用户的既有快捷键可能不会被 Chrome 自动改写；如仍为空或冲突，需要在 `chrome://extensions/shortcuts` 手动重新绑定。`file://` 页面仍需开启“允许访问文件网址”。
 ---
 
 ## v0.2.4 - 2026-05-07

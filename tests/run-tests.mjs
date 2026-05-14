@@ -1330,9 +1330,11 @@ test("extension manifest exposes popup and keyboard commands", async () => {
   const manifest = JSON.parse(await readFile(new URL("../extension/manifest.json", import.meta.url), "utf8"));
 
   assert.equal(manifest.action.default_popup, "popup.html");
-  assert.equal("host_permissions" in manifest, false);
-  assert.equal(manifest.commands["quick-save-current-window"].suggested_key.default, "Alt+Shift+S");
-  assert.equal(manifest.commands["capture-screenshot-area"].suggested_key.default, "Alt+Shift+X");
+  assert.deepEqual(manifest.host_permissions, ["http://*/*", "https://*/*"]);
+  assert.equal(manifest.commands["quick-save-current-window"].suggested_key.default, "Ctrl+Shift+S");
+  assert.equal(manifest.commands["capture-screenshot-area"].suggested_key.default, "Ctrl+Shift+X");
+  assert.deepEqual(manifest.content_scripts?.[0]?.matches, ["http://*/*", "https://*/*"]);
+  assert.deepEqual(manifest.content_scripts?.[0]?.js, ["gesture-content-script.js"]);
 });
 
 test("context menu places screenshot above clipped page save and page save builds a page clip", async () => {
@@ -1380,6 +1382,9 @@ test("extension background gates gesture injection behind explicit enablement an
   assert.match(background, /chrome\.windows\.onFocusChanged\.addListener/);
   assert.match(background, /chrome\.windows\.WINDOW_ID_NONE/);
   assert.match(gesture, /isGestureScriptableTab/);
+  const gestureContentScript = await readFile(new URL("../extension/gesture-content-script.js", import.meta.url), "utf8");
+  assert.match(gestureContentScript, /type:\s*"sync-selection-gesture"/);
+  assert.match(gestureContentScript, /chrome\.runtime\.sendMessage/);
   assert.doesNotMatch(gesture, /modifier:\s*DEFAULT_SETTINGS\.gestureModifier/);
 });
 
@@ -1404,8 +1409,10 @@ test("extension popup presents a capture console and keeps full settings in opti
     "更多保存方式",
     "选中文本右键",
     "图片右键",
-    "Alt\\+Shift\\+S",
-    "Alt\\+Shift\\+X",
+    "Ctrl\\+Shift\\+S",
+    "Ctrl\\+Shift\\+X",
+    "shortcutSummary",
+    "openShortcuts",
     "openOptions",
     "打开今天 Inbox"
   ]) {
@@ -1437,6 +1444,8 @@ test("extension popup presents a capture console and keeps full settings in opti
   assert.match(popupJs, /open-path/);
   assert.match(popupJs, /capture-viewport-screenshot/);
   assert.match(popupJs, /notifySaveResult/);
+  assert.match(popupJs, /chrome\.commands\.getAll/);
+  assert.match(popupJs, /renderShortcutSummary/);
   assert.doesNotMatch(popupJs, /set-config/);
   assert.doesNotMatch(popupJs, /pick-folder/);
   assert.doesNotMatch(popupJs, /save-current-tab/);
@@ -1557,10 +1566,15 @@ test("project metadata, CI, README, and changelog describe v0.2.5 capture format
   assert.match(ci, /npm test/);
   assert.match(ci, /npm run check/);
   assert.match(packageJson.scripts["release:zip"], /build-release/);
+  assert.match(packageJson.scripts.check, /gesture-content-script\.js/);
   assert.match(gitignore, /^dist\/$/m);
   assert.match(readme, /最新更新：v0\.2\.5/);
   assert.match(readme, /0\.2\.5/);
   assert.match(readme, /保存页面剪藏/);
+  assert.match(readme, /Ctrl\+Shift\+S/);
+  assert.match(readme, /Ctrl\+Shift\+X/);
+  assert.match(readme, /未绑定或被占用/);
+  assert.match(readme, /重启后自动同步/);
   assert.match(readme, /单独 Markdown 文档/);
   assert.match(readme, /不再写入当天 Inbox 日记/);
   assert.match(readme, /同一天同一网址/);
@@ -1575,6 +1589,8 @@ test("project metadata, CI, README, and changelog describe v0.2.5 capture format
   assert.match(readme, /release zip/);
   assert.match(changelog, /## v0\.2\.5 - 2026-05-07/);
   assert.match(changelog, /页面剪藏/);
+  assert.match(changelog, /Ctrl\+Shift\+S/);
+  assert.match(changelog, /gesture-content-script/);
   assert.match(changelog, /单独 Markdown 文档/);
   assert.match(changelog, /同日同 URL 聚合/);
   assert.match(changelog, /### HH:mm 类型/);
