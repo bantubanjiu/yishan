@@ -68,6 +68,8 @@ function selectScreenshotArea() {
     const label = document.createElement("div");
     let start = null;
     let current = null;
+    let activePointerId = null;
+    let finished = false;
 
     Object.assign(overlay.style, {
       position: "fixed",
@@ -105,13 +107,22 @@ function selectScreenshotArea() {
 
     const cleanup = () => {
       window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("pointerup", onPointerUp, true);
+      window.removeEventListener("mouseup", onMouseUp, true);
+      window.removeEventListener("pointercancel", onPointerCancel, true);
       overlay.removeEventListener("pointerdown", onPointerDown, true);
       overlay.removeEventListener("pointermove", onPointerMove, true);
-      overlay.removeEventListener("pointerup", onPointerUp, true);
+      if (activePointerId !== null && overlay.hasPointerCapture?.(activePointerId)) {
+        overlay.releasePointerCapture(activePointerId);
+      }
       overlay.remove();
     };
 
     const finish = () => {
+      if (finished) {
+        return;
+      }
+      finished = true;
       cleanup();
       if (!start || !current) {
         reject(new Error("未选择截图区域"));
@@ -135,6 +146,10 @@ function selectScreenshotArea() {
 
     function onKeyDown(event) {
       if (event.key === "Escape") {
+        if (finished) {
+          return;
+        }
+        finished = true;
         cleanup();
         reject(new Error("已取消截图"));
       }
@@ -144,7 +159,8 @@ function selectScreenshotArea() {
       event.preventDefault();
       start = { x: event.clientX, y: event.clientY };
       current = start;
-      overlay.setPointerCapture(event.pointerId);
+      activePointerId = event.pointerId;
+      overlay.setPointerCapture(activePointerId);
       drawBox();
     }
 
@@ -166,6 +182,23 @@ function selectScreenshotArea() {
       finish();
     }
 
+    function onMouseUp(event) {
+      if (!start) {
+        return;
+      }
+      event.preventDefault();
+      current = { x: event.clientX, y: event.clientY };
+      finish();
+    }
+
+    function onPointerCancel(event) {
+      if (!start) {
+        return;
+      }
+      event.preventDefault();
+      finish();
+    }
+
     function drawBox() {
       const left = Math.min(start.x, current.x);
       const top = Math.min(start.y, current.y);
@@ -181,9 +214,11 @@ function selectScreenshotArea() {
     }
 
     window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("pointerup", onPointerUp, true);
+    window.addEventListener("mouseup", onMouseUp, true);
+    window.addEventListener("pointercancel", onPointerCancel, true);
     overlay.addEventListener("pointerdown", onPointerDown, true);
     overlay.addEventListener("pointermove", onPointerMove, true);
-    overlay.addEventListener("pointerup", onPointerUp, true);
   });
 }
 

@@ -59,9 +59,10 @@ async function saveCurrentWindow() {
 }
 
 async function captureScreenshot() {
-  const response = await sendAction({ type: "capture-screenshot" });
-  assertOk(response, "截图失败");
-  setStatus("已保存：框选截图 → Obsidian。");
+  sendRuntimeMessage({ type: "capture-screenshot" }).catch((error) => {
+    notifySaveResult(error instanceof Error ? error.message : String(error), true);
+  });
+  window.close();
 }
 
 async function captureViewport() {

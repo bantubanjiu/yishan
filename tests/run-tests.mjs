@@ -1456,6 +1456,26 @@ test("extension popup presents a capture console and keeps full settings in opti
   assert.match(optionsJs, /hiddenConfig[.]attachmentsDir/);
 });
 
+test("popup screenshot action dispatches before closing so page selection can start", async () => {
+  const popupJs = await readFile(new URL("../extension/popup.js", import.meta.url), "utf8");
+  const captureScreenshotBlock = popupJs.match(/async function captureScreenshot\(\) \{[\s\S]*?\n\}/)?.[0] || "";
+
+  assert.match(captureScreenshotBlock, /sendRuntimeMessage\(\{ type: "capture-screenshot" \}\)/);
+  assert.match(captureScreenshotBlock, /window\.close\(\)/);
+  assert.doesNotMatch(captureScreenshotBlock, /await sendAction\(\{ type: "capture-screenshot" \}/);
+});
+
+test("screenshot selection resolves on mouse release even when pointerup misses the overlay", async () => {
+  const screenshot = await readFile(new URL("../extension/screenshot.js", import.meta.url), "utf8");
+
+  assert.match(screenshot, /window\.addEventListener\("pointerup", onPointerUp, true\)/);
+  assert.match(screenshot, /window\.addEventListener\("mouseup", onMouseUp, true\)/);
+  assert.match(screenshot, /window\.addEventListener\("pointercancel", onPointerCancel, true\)/);
+  assert.match(screenshot, /overlay\.releasePointerCapture\(activePointerId\)/);
+  assert.match(screenshot, /let finished = false/);
+  assert.match(screenshot, /if \(finished\) \{/);
+});
+
 test("host module structure separates request schema, downloads, rendering, filenames, diagnostics, and errors", async () => {
   for (const file of [
     "request-schema.ts",
