@@ -1695,8 +1695,10 @@ test("project metadata, CI, README, and changelog describe the current macOS res
   assert.match(readme, /release zip/);
   assert.match(changelog, /`v0\.2\.6` 是当前代码中可见的正式版本号/);
   assert.match(changelog, /## v0\.2\.6 - 2026-05-25/);
+  assert.match(changelog, /## 版本历史/);
   assert.match(changelog, /macOS Native Host 未响应/);
   assert.match(changelog, /package\.json` 与 `extension\/manifest\.json` 版本同步为 `0\.2\.6`/);
+  assert.match(changelog, /Chrome headless CDP Popup 烟测/);
   assert.match(changelog, /## v0\.2\.5 - 2026-05-07/);
   assert.match(changelog, /页面剪藏/);
   assert.match(changelog, /Ctrl\+Shift\+S/);
@@ -1705,6 +1707,10 @@ test("project metadata, CI, README, and changelog describe the current macOS res
   assert.match(changelog, /同日同 URL 聚合/);
   assert.match(changelog, /### HH:mm 类型/);
   assert.match(changelog, /不再追加原始图片来源 URL/);
+  assert.doesNotMatch(changelog, /当前目录未检测到 Git 仓库/);
+  assert.doesNotMatch(changelog, /H0\.x/);
+  assert.doesNotMatch(changelog, /## H0\./);
+  assert.doesNotMatch(changelog, /如果以后初始化 Git 仓库/);
 });
 
 let failed = 0;

@@ -128,7 +128,7 @@ macOS：
 bash ./scripts/install-native-host-macos.sh --extension-id "<扩展ID>"
 ```
 
-默认安装为**源代码联动模式**：浏览器启动 Native Host 时会直接运行当前仓库的 `src/host/handle-json-file.ts`。更新仓库代码后，只要仓库路径不变，Native Host 会自动使用最新 Host 逻辑。
+默认安装为**源代码联动模式**：浏览器启动 Native Host 时会运行当前仓库的 `src/host` 逻辑（macOS launcher 从 `index.ts` 处理 Native Messaging 帧，Windows launcher 兼容转发到 `handle-json-file.ts`）。更新仓库代码后，只要仓库路径不变，Native Host 会自动使用最新 Host 逻辑。
 
 如果想让 Native Host 脱离仓库、固定使用安装当时快照：
 
