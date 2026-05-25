@@ -271,6 +271,7 @@ test("formats image download failure without writing the source image URL", () =
 });
 
 test("formats a clipped page as a standalone markdown document with source metadata", () => {
+  const capturedAt = localIso(2026, 5, 7, 10, 15);
   const entry = formatCaptureEntry(
     {
       type: "page",
@@ -278,14 +279,23 @@ test("formats a clipped page as a standalone markdown document with source metad
       pageUrl: "https://example.com/article",
       markdown: "# Article\n\nUseful paragraph.",
       images: [],
-      capturedAt: localIso(2026, 5, 7, 10, 15)
+      capturedAt
     },
     { standalone: true }
   );
 
   assert.equal(
     entry,
-    "---\ntitle: \"Article [Docs]\"\nsource: \"https://example.com/article\"\nclipped_at: \"2026-05-07T02:15:00.000Z\"\n---\n\n# Article\n\nUseful paragraph.\n"
+    `---
+title: "Article [Docs]"
+source: "https://example.com/article"
+clipped_at: ${JSON.stringify(capturedAt)}
+---
+
+# Article
+
+Useful paragraph.
+`
   );
   assert.doesNotMatch(entry, /```text/);
 });
@@ -803,6 +813,7 @@ test("rejects non-image and oversized data URLs without blocking markdown writes
 
 test("writes clipped pages to standalone notes without updating the daily inbox", async () => {
   const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
+  const capturedAt = localIso(2026, 5, 7, 10, 15);
 
   const result = await writeCaptureToVault(
     {
@@ -811,7 +822,7 @@ test("writes clipped pages to standalone notes without updating the daily inbox"
       pageUrl: "https://example.com/articles/1",
       markdown: "# Example Article\n\nUseful body.",
       images: [],
-      capturedAt: localIso(2026, 5, 7, 10, 15)
+      capturedAt
     },
     {
       vaultPath,
@@ -824,7 +835,16 @@ test("writes clipped pages to standalone notes without updating the daily inbox"
   assert.equal(await pathExists(localDatePath(vaultPath, 2026, 5, 7)), false);
   assert.equal(
     await readFile(result.notePath, "utf8"),
-    "---\ntitle: \"Example Article\"\nsource: \"https://example.com/articles/1\"\nclipped_at: \"2026-05-07T02:15:00.000Z\"\n---\n\n# Example Article\n\nUseful body.\n"
+    `---
+title: "Example Article"
+source: "https://example.com/articles/1"
+clipped_at: ${JSON.stringify(capturedAt)}
+---
+
+# Example Article
+
+Useful body.
+`
   );
 });
 
