@@ -78,7 +78,7 @@ export async function handleHostRequest(
   if (request.type === "get-config") {
     return {
       ok: true,
-      config: await loadConfig(configPath)
+      config: await loadConfig(configPath, { allowMissing: true })
     };
   }
 

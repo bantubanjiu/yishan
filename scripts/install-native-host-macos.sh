@@ -41,6 +41,7 @@ manifest_root="$HOME/Library/Application Support/ObsidianWebClipperLocal"
 host_install_dir="$manifest_root/host"
 active_host_dir="$repo_host_dir"
 launcher_path="$manifest_root/native-host"
+log_path="$manifest_root/native-host.log"
 manifest_name="com.local.obsidian_web_clipper.json"
 
 mkdir -p "$manifest_root"
@@ -55,7 +56,8 @@ fi
 cat > "$launcher_path" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-exec "$node_path" "$active_host_dir/index.ts"
+log_path="$log_path"
+exec "$node_path" "$active_host_dir/index.ts" 2>>"\$log_path"
 EOF
 chmod 755 "$launcher_path"
 
@@ -79,3 +81,5 @@ write_manifest "$HOME/Library/Application Support/Microsoft Edge/NativeMessaging
 echo "Native host installed for Chrome and Edge:"
 echo "$HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts/$manifest_name"
 echo "$HOME/Library/Application Support/Microsoft Edge/NativeMessagingHosts/$manifest_name"
+echo "Native host stderr log:"
+echo "$log_path"

@@ -15,6 +15,8 @@ const fields = {
 const statusEl = document.querySelector("#status");
 const shortcutSummary = document.querySelector("#shortcutSummary");
 const buttons = Array.from(document.querySelectorAll("button"));
+const ENTRANCE_BUTTON_IDS = new Set(["openShortcuts", "reload"]);
+const MESSAGE_TIMEOUT_MS = 4_000;
 let hiddenConfig = {
   inboxDir: "Inbox",
   attachmentsDir: "Inbox\\attachments"
@@ -116,15 +118,16 @@ function readConfig() {
 }
 
 async function sendAction(message, fallback) {
+  const timeoutMessage = "请求超时，请检查 Native Host 安装或稍后重试。";
   try {
-    const response = await sendRuntimeMessage(message);
+    const response = await withTimeout(sendRuntimeMessage(message), timeoutMessage);
     if (response?.ok === false && canFallbackFromResponse(response) && typeof fallback === "function") {
-      return fallback(new Error(response.error));
+      return withTimeout(fallback(new Error(response.error)), timeoutMessage);
     }
     return response;
   } catch (error) {
     if (typeof fallback === "function") {
-      return fallback(error);
+      return withTimeout(fallback(error), timeoutMessage);
     }
     throw error;
   }
@@ -152,6 +155,14 @@ function sendRuntimeMessage(message) {
   });
 }
 
+function withTimeout(promise, message, timeoutMs = MESSAGE_TIMEOUT_MS) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 function sendNativeMessage(message) {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendNativeMessage(HOST_NAME, message, (response) => {
@@ -167,7 +178,7 @@ function sendNativeMessage(message) {
 
 async function runAction(loadingMessage, action) {
   setStatus(loadingMessage);
-  setBusy(true);
+  setBusy(true, { allowEntrances: true });
   try {
     await action();
   } catch (error) {
@@ -187,10 +198,11 @@ function normalizeSelectionModifier(value) {
   return ["Alt", "Ctrl", "Shift", "Meta"].includes(value) ? value : DEFAULT_CONFIG.selectionModifier;
 }
 
-function setBusy(isBusy) {
+function setBusy(isBusy, options = {}) {
   for (const button of buttons) {
-    button.disabled = isBusy;
-    if (isBusy) {
+    const keepEntranceEnabled = options.allowEntrances && ENTRANCE_BUTTON_IDS.has(button.id);
+    button.disabled = isBusy && !keepEntranceEnabled;
+    if (isBusy && !keepEntranceEnabled) {
       button.classList.add("is-loading");
     } else {
       button.classList.remove("is-loading");

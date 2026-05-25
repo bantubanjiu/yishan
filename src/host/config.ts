@@ -6,12 +6,34 @@ import type { AppConfig } from "./types.ts";
 
 const APP_DIR = path.join(homedir(), ".obsidian-web-clipper-local");
 export const DEFAULT_CONFIG_PATH = path.join(APP_DIR, "config.json");
+export const DEFAULT_INBOX_DIR = "Inbox";
+export const DEFAULT_ATTACHMENTS_DIR = "Inbox/attachments";
 export const DEFAULT_SELECTION_MODIFIER = "Alt";
 export const DEFAULT_SELECTION_GESTURE_ENABLED = false;
 export const DEFAULT_SELECTION_SAVE_MODE = "plain";
 
-export async function loadConfig(configPath = DEFAULT_CONFIG_PATH): Promise<AppConfig> {
-  const raw = await readFile(configPath, "utf8");
+export const EMPTY_CONFIG: AppConfig = {
+  vaultPath: "",
+  inboxDir: DEFAULT_INBOX_DIR,
+  attachmentsDir: DEFAULT_ATTACHMENTS_DIR,
+  selectionModifier: DEFAULT_SELECTION_MODIFIER,
+  selectionGestureEnabled: DEFAULT_SELECTION_GESTURE_ENABLED,
+  selectionSaveMode: DEFAULT_SELECTION_SAVE_MODE
+};
+
+export async function loadConfig(
+  configPath = DEFAULT_CONFIG_PATH,
+  options: { allowMissing?: boolean } = {}
+): Promise<AppConfig> {
+  let raw: string;
+  try {
+    raw = await readFile(configPath, "utf8");
+  } catch (error) {
+    if (options.allowMissing && isFileNotFound(error)) {
+      return { ...EMPTY_CONFIG };
+    }
+    throw error;
+  }
   const parsed = JSON.parse(raw);
   validateConfig(parsed);
   return withConfigDefaults(parsed);
@@ -53,6 +75,10 @@ export function validateConfig(value: unknown): asserts value is AppConfig {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isFileNotFound(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 function withConfigDefaults(config: AppConfig): AppConfig {

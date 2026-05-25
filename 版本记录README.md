@@ -43,6 +43,26 @@
 
 ## 当前正式版本
 
+## v0.2.6 - 2026-05-25
+
+### 更新内容
+- 修复 macOS Native Host 未响应或首次未配置时 Popup/设置页长时间加载、入口按钮不可用的问题。
+- macOS 安装脚本会为 Native Host stderr 写入本地日志，诊断脚本新增真实 Native Messaging `get-config` 握手检查。
+- README 增加 macOS Popup 卡加载态的排查步骤和日志位置。
+
+### 实现方式
+- `src/host/config.ts` 支持缺失配置时返回空 Vault 的默认配置；保存和采集仍通过原有校验要求有效 Vault。
+- `extension/popup.js`、`options.js` 为 runtime/native 消息增加超时，并在忙碌态保持设置、快捷键、刷新等入口可点击。
+- `scripts/diagnose-macos.sh` 通过 4 字节长度头协议调用 launcher，验证 Host 能在 5 秒内返回配置响应。
+
+### 验证方式
+- `npm.cmd run check`
+
+### 已知限制
+- 本轮在 Windows 开发环境完成自动化验证，未在真实 macOS Chrome UI 中手工复现；macOS 侧可用新增诊断脚本确认安装链路。
+
+---
+
 ## v0.2.5 - 2026-05-07
 
 ### 更新内容

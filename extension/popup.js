@@ -26,6 +26,8 @@ const summary = {
 
 const statusEl = document.querySelector("#status");
 const allButtons = Array.from(document.querySelectorAll("button"));
+const ENTRANCE_BUTTON_IDS = new Set(["openOptions", "openShortcuts", "reload"]);
+const MESSAGE_TIMEOUT_MS = 4_000;
 let currentConfig = { ...DEFAULT_CONFIG };
 
 controls.saveCurrentPage.addEventListener("click", () => runSaveAction("正在保存当前页面...", saveCurrentPage));
@@ -187,15 +189,16 @@ function isOrdinaryTab(tab) {
 }
 
 async function sendAction(message, fallback) {
+  const timeoutMessage = "请求超时，请检查 Native Host 安装或打开完整设置。";
   try {
-    const response = await sendRuntimeMessage(message);
+    const response = await withTimeout(sendRuntimeMessage(message), timeoutMessage);
     if (response?.ok === false && canFallbackFromResponse(response) && typeof fallback === "function") {
-      return fallback(new Error(response.error));
+      return withTimeout(fallback(new Error(response.error)), timeoutMessage);
     }
     return response;
   } catch (error) {
     if (typeof fallback === "function") {
-      return fallback(error);
+      return withTimeout(fallback(error), timeoutMessage);
     }
     throw error;
   }
@@ -221,6 +224,14 @@ function sendRuntimeMessage(message) {
       resolve(response);
     });
   });
+}
+
+function withTimeout(promise, message, timeoutMs = MESSAGE_TIMEOUT_MS) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 function sendNativeMessage(message) {
@@ -258,7 +269,7 @@ function notifySaveResult(message, isError = false) {
 
 async function runAction(loadingMessage, action, options = {}) {
   setStatus(loadingMessage);
-  setBusy(true);
+  setBusy(true, { allowEntrances: true });
   try {
     await action();
     if (options.quietSuccess) {
@@ -287,10 +298,11 @@ function normalizeSelectionModifier(value) {
   return ["Alt", "Ctrl", "Shift", "Meta"].includes(value) ? value : DEFAULT_CONFIG.selectionModifier;
 }
 
-function setBusy(isBusy) {
+function setBusy(isBusy, options = {}) {
   for (const button of allButtons) {
-    button.disabled = isBusy;
-    if (isBusy) {
+    const keepEntranceEnabled = options.allowEntrances && ENTRANCE_BUTTON_IDS.has(button.id);
+    button.disabled = isBusy && !keepEntranceEnabled;
+    if (isBusy && !keepEntranceEnabled) {
       button.classList.add("is-loading");
     } else {
       button.classList.remove("is-loading");

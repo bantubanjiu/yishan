@@ -214,7 +214,23 @@ powershell -ExecutionPolicy Bypass -File scripts/diagnose.ps1 -ExtensionId "<扩
 bash ./scripts/diagnose-macos.sh "<扩展ID>"
 ```
 
-诊断脚本会检查 Node、项目版本、浏览器扩展 manifest、Native Messaging manifest、allowed_origins、Native Host launcher、config.json、vaultPath、Inbox、attachments 和测试写入权限，并给出 ✅/❌ 与下一步建议。
+诊断脚本会检查 Node、项目版本、浏览器扩展 manifest、Native Messaging manifest、allowed_origins、Native Host launcher、config.json、vaultPath、Inbox、attachments 和测试写入权限，并给出 ✅/❌ 与下一步建议。macOS 诊断还会对 Native Host launcher 发送一次真实 `get-config` 握手，确认 5 秒内能返回 Native Messaging 帧；若 Popup 一直显示加载态、无法点击“完整设置”或快捷键入口，优先运行：
+
+```bash
+bash ./scripts/diagnose-macos.sh "<扩展ID>"
+```
+
+若握手失败，请确认 Node.js `>=24`、manifest 的 `allowed_origins` 包含当前扩展 ID，并重新运行：
+
+```bash
+bash ./scripts/install-native-host-macos.sh --extension-id "<扩展ID>"
+```
+
+Native Host stderr 日志位于：
+
+```text
+~/Library/Application Support/ObsidianWebClipperLocal/native-host.log
+```
 
 ## 开发说明
 

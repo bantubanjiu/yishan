@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { access, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { loadConfig } from "../src/host/config.ts";
 import { formatCaptureEntry } from "../src/host/markdown.ts";
@@ -47,6 +49,54 @@ function localTime(isoDate) {
 function expectAnyString(value) {
   assert.equal(typeof value, "string");
   return value;
+}
+
+function readOneNativeResponse(stream, timeoutMs = 1_000) {
+  return new Promise((resolve, reject) => {
+    let buffer = Buffer.alloc(0);
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("Timed out waiting for native response"));
+    }, timeoutMs);
+
+    function cleanup() {
+      clearTimeout(timer);
+      stream.off("data", onData);
+      stream.off("error", onError);
+      stream.off("end", onEnd);
+    }
+
+    function onData(chunk) {
+      buffer = Buffer.concat([buffer, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
+      if (buffer.length < 4) {
+        return;
+      }
+      const length = buffer.readUInt32LE(0);
+      if (buffer.length < 4 + length) {
+        return;
+      }
+      cleanup();
+      try {
+        resolve(JSON.parse(buffer.subarray(4, 4 + length).toString("utf8")));
+      } catch (error) {
+        reject(error);
+      }
+    }
+
+    function onError(error) {
+      cleanup();
+      reject(error);
+    }
+
+    function onEnd() {
+      cleanup();
+      reject(new Error("Native host stdout ended before a response frame"));
+    }
+
+    stream.on("data", onData);
+    stream.on("error", onError);
+    stream.on("end", onEnd);
+  });
 }
 
 test("formats a captured URL as a linked title with a timestamp child", () => {
@@ -926,6 +976,23 @@ test("host request handler can save and read configuration", async () => {
   });
 });
 
+test("host request handler returns empty defaults when config has not been created yet", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "clipper-config-"));
+  const configPath = path.join(tempDir, "missing-config.json");
+
+  assert.deepEqual(await handleHostRequest({ type: "get-config" }, configPath), {
+    ok: true,
+    config: {
+      vaultPath: "",
+      inboxDir: "Inbox",
+      attachmentsDir: "Inbox/attachments",
+      selectionModifier: "Alt",
+      selectionGestureEnabled: false,
+      selectionSaveMode: "plain"
+    }
+  });
+});
+
 test("accepts pick-folder native requests", () => {
   assert.deepEqual(assertHostRequest({ type: "pick-folder", initialPath: "C:\\Vault" }), {
     type: "pick-folder",
@@ -1308,7 +1375,37 @@ test("macOS native host install registers user Chrome and Edge manifests", async
   assert.match(script, /Microsoft Edge\/NativeMessagingHosts/);
   assert.match(script, /exec "\$node_path" "\$active_host_dir\/index\.ts"/);
   assert.match(script, /chmod 755 "\$launcher_path"/);
+  assert.match(script, /native-host\.log/);
+  assert.match(script, /2>>"\\\$log_path"/);
   assert.match(script, /allowed_origins/);
+});
+
+test("native messaging stdio host responds to an unconfigured get-config request", async () => {
+  const tempHome = await mkdtemp(path.join(tmpdir(), "clipper-home-"));
+  const hostPath = fileURLToPath(new URL("../src/host/index.ts", import.meta.url));
+  const child = spawn(process.execPath, [hostPath], {
+    env: {
+      ...process.env,
+      HOME: tempHome,
+      USERPROFILE: tempHome
+    },
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  const responsePromise = readOneNativeResponse(child.stdout);
+
+  child.stdin.end(encodeNativeMessage({ type: "get-config" }));
+
+  assert.deepEqual(await responsePromise, {
+    ok: true,
+    config: {
+      vaultPath: "",
+      inboxDir: "Inbox",
+      attachmentsDir: "Inbox/attachments",
+      selectionModifier: "Alt",
+      selectionGestureEnabled: false,
+      selectionSaveMode: "plain"
+    }
+  });
 });
 
 test("native host install defaults to running host code from the repository", async () => {
@@ -1398,23 +1495,19 @@ test("extension popup presents a capture console and keeps full settings in opti
   for (const expected of [
     "saveCurrentPage",
     "保存当前页面",
-    "采集控制台",
+    "采集内容",
     "saveCurrentWindow",
-    "保存当前窗口标签",
+    "保存当前窗口",
     "captureScreenshot",
-    "保存当前视口",
+    "当前视口",
     "vaultState",
     "gestureSummary",
     "modeSummary",
-    "更多保存方式",
-    "选中文本右键",
-    "图片右键",
-    "Ctrl\\+Shift\\+S",
-    "Ctrl\\+Shift\\+X",
+    "当前状态",
     "shortcutSummary",
     "openShortcuts",
     "openOptions",
-    "打开今天 Inbox"
+    "今日 Inbox"
   ]) {
     assert.match(popupHtml, new RegExp(expected));
   }
@@ -1446,6 +1539,9 @@ test("extension popup presents a capture console and keeps full settings in opti
   assert.match(popupJs, /notifySaveResult/);
   assert.match(popupJs, /chrome\.commands\.getAll/);
   assert.match(popupJs, /renderShortcutSummary/);
+  assert.match(popupJs, /withTimeout/);
+  assert.match(popupJs, /ENTRANCE_BUTTON_IDS/);
+  assert.match(popupJs, /setBusy\(true,\s*\{ allowEntrances: true \}/);
   assert.doesNotMatch(popupJs, /set-config/);
   assert.doesNotMatch(popupJs, /pick-folder/);
   assert.doesNotMatch(popupJs, /save-current-tab/);
@@ -1455,14 +1551,16 @@ test("extension popup presents a capture console and keeps full settings in opti
   assert.match(background, /saveCapture\(capture\)/);
   assert.match(optionsHtml, /完整设置与诊断/);
   assert.match(optionsHtml, /Obsidian Vault 路径/);
-  assert.match(optionsHtml, /快捷键与入口/);
-  assert.match(optionsHtml, /浏览器内部页无法注入/);
-  assert.match(optionsHtml, /当前视口截图不是滚动长截图/);
+  assert.match(optionsHtml, /快捷入口与状态/);
+  assert.match(optionsHtml, /允许访问文件网址/);
   assert.doesNotMatch(optionsHtml, /id="inboxDir"/);
   assert.doesNotMatch(optionsHtml, /id="attachmentsDir"/);
   assert.match(optionsJs, /selectionSaveMode/);
   assert.match(optionsJs, /hiddenConfig[.]inboxDir/);
   assert.match(optionsJs, /hiddenConfig[.]attachmentsDir/);
+  assert.match(optionsJs, /withTimeout/);
+  assert.match(optionsJs, /ENTRANCE_BUTTON_IDS/);
+  assert.match(optionsJs, /setBusy\(true,\s*\{ allowEntrances: true \}/);
 });
 
 test("popup screenshot action dispatches before closing so page selection can start", async () => {
@@ -1544,6 +1642,10 @@ test("diagnostic scripts cover Windows and macOS install chains", async () => {
   assert.match(macScript, /Google\/Chrome\/NativeMessagingHosts/);
   assert.match(macScript, /Microsoft Edge\/NativeMessagingHosts/);
   assert.match(macScript, /native-host/);
+  assert.match(macScript, /Native Messaging handshake/);
+  assert.match(macScript, /encodeNativeMessage/);
+  assert.match(macScript, /timeout:\s*5_000/);
+  assert.doesNotMatch(macScript, /\btimeout 5\b/);
 });
 
 test("project metadata, CI, README, and changelog describe v0.2.5 capture formatting release", async () => {

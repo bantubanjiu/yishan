@@ -26,6 +26,64 @@ json_get() {
   node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync(process.argv[1],'utf8')); const path=process.argv[2].split('.'); let v=data; for (const key of path) v=v?.[key]; if (Array.isArray(v)) console.log(v.join(', ')); else if (v != null) console.log(v);" "$1" "$2"
 }
 
+check_native_handshake() {
+  local label="$1"
+  local launcher_path="$2"
+  if [[ -z "$launcher_path" || ! -x "$launcher_path" ]]; then
+    return
+  fi
+
+  local output
+  if output="$(
+    node - "$launcher_path" <<'NODE'
+const { spawnSync } = require("node:child_process");
+
+function encodeNativeMessage(message) {
+  const payload = Buffer.from(JSON.stringify(message), "utf8");
+  const header = Buffer.alloc(4);
+  header.writeUInt32LE(payload.length, 0);
+  return Buffer.concat([header, payload]);
+}
+
+const launcher = process.argv[2];
+const result = spawnSync(launcher, {
+  input: encodeNativeMessage({ type: "get-config" }),
+  maxBuffer: 1024 * 1024,
+  timeout: 5_000
+});
+
+if (result.error) {
+  console.error(result.error.message);
+  process.exit(1);
+}
+
+const stdout = result.stdout || Buffer.alloc(0);
+if (stdout.length < 4) {
+  console.error(`No native response frame. stderr=${(result.stderr || "").toString("utf8").trim()}`);
+  process.exit(1);
+}
+
+const length = stdout.readUInt32LE(0);
+if (stdout.length < 4 + length) {
+  console.error("Incomplete native response frame");
+  process.exit(1);
+}
+
+const response = JSON.parse(stdout.subarray(4, 4 + length).toString("utf8"));
+if (!response || response.ok !== true || !response.config) {
+  console.error(JSON.stringify(response));
+  process.exit(1);
+}
+
+console.log(JSON.stringify(response.config));
+NODE
+  )"; then
+    pass "$label Native Messaging handshake" "$output"
+  else
+    fail "$label Native Messaging handshake" "launcher 未在 5 秒内返回有效 get-config 响应。" "检查 Node>=24、重新运行 install-native-host-macos.sh，并查看 ~/Library/Application Support/ObsidianWebClipperLocal/native-host.log。"
+  fi
+}
+
 echo "移山安装诊断 / Yishan diagnostics"
 echo "=================================="
 
@@ -74,6 +132,7 @@ check_native_manifest() {
   launcher_path="$(json_get "$manifest_path" path || true)"
   if [[ -n "$launcher_path" && -x "$launcher_path" ]]; then
     pass "$label native-host launcher executable" "$launcher_path"
+    check_native_handshake "$label" "$launcher_path"
   else
     fail "$label native-host launcher executable" "manifest path 不存在或不可执行：$launcher_path" "重跑 scripts/install-native-host-macos.sh。"
   fi
