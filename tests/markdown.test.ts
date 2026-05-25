@@ -12,7 +12,7 @@ function localTime(isoDate: string): string {
   return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
 }
 
-test("formats a captured URL as a linked title with a timestamp child", () => {
+test("formats a captured URL under a level-four page heading with a bullet record", () => {
   const entry = formatCaptureEntry({
     type: "url",
     title: "Example [Docs]",
@@ -20,7 +20,7 @@ test("formats a captured URL as a linked title with a timestamp child", () => {
     capturedAt: localIso(2026, 4, 29, 6, 30)
   });
 
-  assert.equal(entry, "- [Example \\[Docs\\]](https://example.com/docs)\n\n  - 06:30\n");
+  assert.equal(entry, "#### [Example \\[Docs\\]](https://example.com/docs)\n\n- 06:30 保存链接\n");
 });
 
 test("formats capture time in the host local timezone", () => {
@@ -33,10 +33,10 @@ test("formats capture time in the host local timezone", () => {
     capturedAt
   });
 
-  assert.equal(entry, `- [Local Time](https://example.com/local-time)\n\n  - ${localTime(capturedAt)}\n`);
+  assert.equal(entry, `#### [Local Time](https://example.com/local-time)\n\n- ${localTime(capturedAt)} 保存链接\n`);
 });
 
-test("formats selected text as an Obsidian fenced code block under the timestamp", () => {
+test("formats rich selected markdown only when formatting markers add information", () => {
   const entry = formatCaptureEntry({
     type: "selection",
     title: "Article",
@@ -48,9 +48,58 @@ test("formats selected text as an Obsidian fenced code block under the timestamp
 
   assert.equal(
     entry,
-    "- [Article](https://example.com/a)\n\n  - 06:31\n```text\nfirst line\n  second line\n```\n"
+    "#### [Article](https://example.com/a)\n\n- 06:31 富文本摘录\n\n## Heading\n\n**first line**\n\nsecond line\n"
   );
 });
+
+test("preserves italic markdown as rich selected content", () => {
+  const entry = formatCaptureEntry({
+    type: "selection",
+    title: "Article",
+    pageUrl: "https://example.com/a",
+    text: "emphasized note",
+    markdown: "*emphasized note*",
+    capturedAt: localIso(2026, 4, 29, 6, 31)
+  });
+
+  assert.equal(
+    entry,
+    "#### [Article](https://example.com/a)\n\n- 06:31 富文本摘录\n\n*emphasized note*\n"
+  );
+});
+
+test("preserves inline code and strikethrough markdown as rich selected content", () => {
+  for (const markdown of ["Use `npm test`.", "Remove ~~legacy~~ text."]) {
+    const entry = formatCaptureEntry({
+      type: "selection",
+      title: "Article",
+      pageUrl: "https://example.com/a",
+      text: markdown.replace(/[`~]/g, ""),
+      markdown,
+      capturedAt: localIso(2026, 4, 29, 6, 31)
+    });
+
+    assert.match(entry, /- 06:31 富文本摘录/);
+    assert.match(entry, new RegExp(markdown.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});
+
+test("formats plain selected text as text under a bullet record", () => {
+  const entry = formatCaptureEntry({
+    type: "selection",
+    title: "Article",
+    pageUrl: "https://example.com/a",
+    text: "first line\n  second line",
+    markdown: "first line\n  second line",
+    capturedAt: localIso(2026, 4, 29, 6, 31)
+  });
+
+  assert.equal(
+    entry,
+    "#### [Article](https://example.com/a)\n\n- 06:31 文字摘录\n\nfirst line\n  second line\n"
+  );
+});
+
 
 test("uses a longer code fence when selected text already contains backtick fences", () => {
   const entry = formatCaptureEntry({
@@ -61,7 +110,7 @@ test("uses a longer code fence when selected text already contains backtick fenc
     capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
-  assert.equal(entry, "- [Article](https://example.com/a)\n\n  - 06:31\n````text\nbefore\n```\ninside\n```\nafter\n````\n");
+  assert.equal(entry, "#### [Article](https://example.com/a)\n\n- 06:31 文字摘录\n\n````markdown\nbefore\n```\ninside\n```\nafter\n````\n");
 });
 
 test("uses explicit selection code language when provided by the browser context", () => {
@@ -74,7 +123,7 @@ test("uses explicit selection code language when provided by the browser context
     capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
-  assert.equal(entry, "- [Code](https://example.com/code)\n\n  - 06:31\n```js\nconst value = 1;\n```\n");
+  assert.equal(entry, "#### [Code](https://example.com/code)\n\n- 06:31 文字摘录\n\n```js\nconst value = 1;\n```\n");
 });
 
 test("detects JSON selections and labels the code block", () => {
@@ -86,7 +135,7 @@ test("detects JSON selections and labels the code block", () => {
     capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
-  assert.equal(entry, "- [JSON](https://example.com/json)\n\n  - 06:31\n```json\n{\n  \"name\": \"yishan\",\n  \"enabled\": true\n}\n```\n");
+  assert.equal(entry, "#### [JSON](https://example.com/json)\n\n- 06:31 文字摘录\n\n```json\n{\n  \"name\": \"yishan\",\n  \"enabled\": true\n}\n```\n");
 });
 
 test("detects common code-like selections before falling back to text", () => {
@@ -114,7 +163,8 @@ test("detects common code-like selections before falling back to text", () => {
 
   assert.match(htmlEntry, /\n```html\n/);
   assert.match(pythonEntry, /\n```python\n/);
-  assert.match(textEntry, /\n```text\n/);
+  assert.doesNotMatch(textEntry, /```text/);
+  assert.match(textEntry, /\n这是一段普通摘录，不应该被误判为代码。\n$/);
 });
 
 test("formats a downloaded image as only an embedded Obsidian attachment", () => {
@@ -131,7 +181,7 @@ test("formats a downloaded image as only an embedded Obsidian attachment", () =>
 
   assert.equal(
     entry,
-    "- [Image Page](https://example.com/page)\n\n  - 06:32\n  ![[20260429-063200-image.jpg]]\n"
+    "#### [Image Page](https://example.com/page)\n\n- 06:32 图片\n\n![[20260429-063200-image.jpg]]\n"
   );
   assert.doesNotMatch(entry, /来源图片|https:\/\/cdn\.example\.com\/image\.jpg/);
 });
@@ -150,7 +200,7 @@ test("formats image download failure without writing the source image URL", () =
 
   assert.equal(
     entry,
-    "- [Image Page](https://example.com/page)\n\n  - 06:33\n  图片下载失败：HTTP 403\n"
+    "#### [Image Page](https://example.com/page)\n\n- 06:33 图片\n\n图片下载失败：HTTP 403\n"
   );
   assert.doesNotMatch(entry, /来源图片|https:\/\/cdn\.example\.com\/image\.jpg/);
 });

@@ -99,7 +99,7 @@ function readOneNativeResponse(stream, timeoutMs = 1_000) {
   });
 }
 
-test("formats a captured URL as a linked title with a timestamp child", () => {
+test("formats a captured URL under a level-four page heading with a bullet record", () => {
   const entry = formatCaptureEntry({
     type: "url",
     title: "Example [Docs]",
@@ -107,7 +107,7 @@ test("formats a captured URL as a linked title with a timestamp child", () => {
     capturedAt: localIso(2026, 4, 29, 6, 30)
   });
 
-  assert.equal(entry, "## [Example \\[Docs\\]](https://example.com/docs)\n\n### 06:30 \u4fdd\u5b58\u94fe\u63a5\n");
+  assert.equal(entry, "#### [Example \\[Docs\\]](https://example.com/docs)\n\n- 06:30 \u4fdd\u5b58\u94fe\u63a5\n");
 });
 
 test("formats capture time in the host local timezone", () => {
@@ -120,10 +120,10 @@ test("formats capture time in the host local timezone", () => {
     capturedAt
   });
 
-  assert.equal(entry, `## [Local Time](https://example.com/local-time)\n\n### ${localTime(capturedAt)} \u4fdd\u5b58\u94fe\u63a5\n`);
+  assert.equal(entry, `#### [Local Time](https://example.com/local-time)\n\n- ${localTime(capturedAt)} \u4fdd\u5b58\u94fe\u63a5\n`);
 });
 
-test("formats selected text as an Obsidian fenced code block under the timestamp", () => {
+test("formats plain selected text as text under a bullet record", () => {
   const entry = formatCaptureEntry({
     type: "selection",
     title: "Article",
@@ -133,7 +133,7 @@ test("formats selected text as an Obsidian fenced code block under the timestamp
     capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
-  assert.equal(entry, "## [Article](https://example.com/a)\n\n### 06:31 \u6587\u5b57\u6458\u5f55\n\n```text\nfirst line\n  second line\n```\n");
+  assert.equal(entry, "#### [Article](https://example.com/a)\n\n- 06:31 \u6587\u5b57\u6458\u5f55\n\nfirst line\n  second line\n");
 });
 
 test("does not treat normalized plain selection markdown as rich text", () => {
@@ -146,7 +146,55 @@ test("does not treat normalized plain selection markdown as rich text", () => {
     capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
-  assert.equal(entry, "## [Article](https://example.com/a)\n\n### 06:31 \u6587\u5b57\u6458\u5f55\n\n```text\nfirst line \n\n  second line\n```\n");
+  assert.equal(entry, "#### [Article](https://example.com/a)\n\n- 06:31 \u6587\u5b57\u6458\u5f55\n\nfirst line \n\n  second line\n");
+});
+
+test("formats rich selected markdown only when formatting markers add information", () => {
+  const entry = formatCaptureEntry({
+    type: "selection",
+    title: "Article",
+    pageUrl: "https://example.com/a",
+    text: "first line\nsecond line",
+    markdown: "## Heading\n\n**first line**\n\nsecond line",
+    capturedAt: localIso(2026, 4, 29, 6, 31)
+  });
+
+  assert.equal(
+    entry,
+    "#### [Article](https://example.com/a)\n\n- 06:31 \u5bcc\u6587\u672c\u6458\u5f55\n\n## Heading\n\n**first line**\n\nsecond line\n"
+  );
+});
+
+test("preserves italic markdown as rich selected content", () => {
+  const entry = formatCaptureEntry({
+    type: "selection",
+    title: "Article",
+    pageUrl: "https://example.com/a",
+    text: "emphasized note",
+    markdown: "*emphasized note*",
+    capturedAt: localIso(2026, 4, 29, 6, 31)
+  });
+
+  assert.equal(
+    entry,
+    "#### [Article](https://example.com/a)\n\n- 06:31 \u5bcc\u6587\u672c\u6458\u5f55\n\n*emphasized note*\n"
+  );
+});
+
+test("preserves inline code and strikethrough markdown as rich selected content", () => {
+  for (const markdown of ["Use `npm test`.", "Remove ~~legacy~~ text."]) {
+    const entry = formatCaptureEntry({
+      type: "selection",
+      title: "Article",
+      pageUrl: "https://example.com/a",
+      text: markdown.replace(/[`~]/g, ""),
+      markdown,
+      capturedAt: localIso(2026, 4, 29, 6, 31)
+    });
+
+    assert.match(entry, /- 06:31 \u5bcc\u6587\u672c\u6458\u5f55/);
+    assert.match(entry, new RegExp(markdown.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
 });
 
 test("uses a longer code fence when selected text already contains backtick fences", () => {
@@ -158,7 +206,7 @@ test("uses a longer code fence when selected text already contains backtick fenc
     capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
-  assert.equal(entry, "## [Article](https://example.com/a)\n\n### 06:31 \u6587\u5b57\u6458\u5f55\n\n````text\nbefore\n```\ninside\n```\nafter\n````\n");
+  assert.equal(entry, "#### [Article](https://example.com/a)\n\n- 06:31 \u6587\u5b57\u6458\u5f55\n\n````markdown\nbefore\n```\ninside\n```\nafter\n````\n");
 });
 
 test("uses explicit selection code language when provided by the browser context", () => {
@@ -171,7 +219,7 @@ test("uses explicit selection code language when provided by the browser context
     capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
-  assert.equal(entry, "## [Code](https://example.com/code)\n\n### 06:31 \u6587\u5b57\u6458\u5f55\n\n```js\nconst value = 1;\n```\n");
+  assert.equal(entry, "#### [Code](https://example.com/code)\n\n- 06:31 \u6587\u5b57\u6458\u5f55\n\n```js\nconst value = 1;\n```\n");
 });
 
 test("detects JSON selections and labels the code block", () => {
@@ -183,7 +231,7 @@ test("detects JSON selections and labels the code block", () => {
     capturedAt: localIso(2026, 4, 29, 6, 31)
   });
 
-  assert.equal(entry, "## [JSON](https://example.com/json)\n\n### 06:31 \u6587\u5b57\u6458\u5f55\n\n```json\n{\n  \"name\": \"yishan\",\n  \"enabled\": true\n}\n```\n");
+  assert.equal(entry, "#### [JSON](https://example.com/json)\n\n- 06:31 \u6587\u5b57\u6458\u5f55\n\n```json\n{\n  \"name\": \"yishan\",\n  \"enabled\": true\n}\n```\n");
 });
 
 test("detects common code-like selections before falling back to text", () => {
@@ -211,7 +259,8 @@ test("detects common code-like selections before falling back to text", () => {
 
   assert.match(htmlEntry, /\n```html\n/);
   assert.match(pythonEntry, /\n```python\n/);
-  assert.match(textEntry, /\n```text\n/);
+  assert.doesNotMatch(textEntry, /```text/);
+  assert.match(textEntry, /\n\u8fd9\u662f\u4e00\u6bb5\u666e\u901a\u6458\u5f55\uff0c\u4e0d\u5e94\u8be5\u88ab\u8bef\u5224\u4e3a\u4ee3\u7801\u3002\n$/);
 });
 
 test("formats a downloaded image as only an embedded Obsidian attachment", () => {
@@ -228,7 +277,7 @@ test("formats a downloaded image as only an embedded Obsidian attachment", () =>
 
   assert.equal(
     entry,
-    "## [Image Page](https://example.com/page)\n\n### 06:32 \u56fe\u7247\n\n![[20260429-063200-image.jpg]]\n"
+    "#### [Image Page](https://example.com/page)\n\n- 06:32 \u56fe\u7247\n\n![[20260429-063200-image.jpg]]\n"
   );
   assert.doesNotMatch(entry, /来源图片|https:\/\/cdn\.example\.com\/image\.jpg/);
 });
@@ -247,7 +296,7 @@ test("formats screenshot data URL captures as only the embedded attachment", () 
 
   assert.equal(
     entry,
-    "## [Screenshot Page](https://example.com/page)\n\n### 06:34 \u622a\u56fe\n\n![[20260429-063400-screenshot.png]]\n"
+    "#### [Screenshot Page](https://example.com/page)\n\n- 06:34 \u622a\u56fe\n\n![[20260429-063400-screenshot.png]]\n"
   );
 });
 
@@ -265,7 +314,7 @@ test("formats image download failure without writing the source image URL", () =
 
   assert.equal(
     entry,
-    "## [Image Page](https://example.com/page)\n\n### 06:33 \u56fe\u7247\n\n\u56fe\u7247\u4e0b\u8f7d\u5931\u8d25\uff1aHTTP 403\n"
+    "#### [Image Page](https://example.com/page)\n\n- 06:33 \u56fe\u7247\n\n\u56fe\u7247\u4e0b\u8f7d\u5931\u8d25\uff1aHTTP 403\n"
   );
   assert.doesNotMatch(entry, /来源图片|https:\/\/cdn\.example\.com\/image\.jpg/);
 });
@@ -318,7 +367,7 @@ test("creates the daily inbox note when it does not exist", async () => {
   );
 
   assert.equal(result.notePath, localDatePath(vaultPath, 2026, 4, 29));
-  assert.equal(await readFile(result.notePath, "utf8"), "## [Example](https://example.com)\n\n### 08:00 \u4fdd\u5b58\u94fe\u63a5\n\n");
+  assert.equal(await readFile(result.notePath, "utf8"), "#### [Example](https://example.com)\n\n- 08:00 \u4fdd\u5b58\u94fe\u63a5\n\n");
 });
 
 test("appends to an existing daily inbox note without overwriting prior captures", async () => {
@@ -352,7 +401,7 @@ test("appends to an existing daily inbox note without overwriting prior captures
   const content = await readFile(localDatePath(vaultPath, 2026, 4, 29), "utf8");
   assert.equal(
     content,
-    "## [First](https://example.com/1)\n\n### 08:00 \u4fdd\u5b58\u94fe\u63a5\n\n## [Second](https://example.com/2)\n\n### 08:01 \u6587\u5b57\u6458\u5f55\n\n```text\nuseful note\n```\n\n"
+    "#### [First](https://example.com/1)\n\n- 08:00 \u4fdd\u5b58\u94fe\u63a5\n\n#### [Second](https://example.com/2)\n\n- 08:01 \u6587\u5b57\u6458\u5f55\n\nuseful note\n\n"
   );
 });
 
@@ -387,9 +436,9 @@ test("appends same-day captures from the same page URL under linked titles", asy
   const content = await readFile(localDatePath(vaultPath, 2026, 4, 29), "utf8");
   assert.equal(
     content,
-    "## [Example \\[Docs\\]](https://example.com/docs)\n\n### 08:00 \u4fdd\u5b58\u94fe\u63a5\n\n### 08:05 \u6587\u5b57\u6458\u5f55\n\n```text\nsame page excerpt\n```\n\n"
+    "#### [Example \\[Docs\\]](https://example.com/docs)\n\n- 08:00 \u4fdd\u5b58\u94fe\u63a5\n\n- 08:05 \u6587\u5b57\u6458\u5f55\n\nsame page excerpt\n\n"
   );
-  assert.equal(content.match(/^## /gm)?.length ?? 0, 1);
+  assert.equal(content.match(/^#### /gm)?.length ?? 0, 1);
 });
 
 test("groups same-day URL, text, rich text, screenshot, and image captures under one page link", async () => {
@@ -459,23 +508,23 @@ test("groups same-day URL, text, rich text, screenshot, and image captures under
   );
 
   const content = await readFile(localDatePath(vaultPath, 2026, 4, 29), "utf8");
-  assert.equal(content.match(/^## \[Example \\\[Docs\\\]\]\(https:\/\/example\.com\/docs\)$/gm)?.length ?? 0, 1);
+  assert.equal(content.match(/^#### \[Example \\\[Docs\\\]\]\(https:\/\/example\.com\/docs\)$/gm)?.length ?? 0, 1);
   assert.equal(
     content,
-    `## [Example \\[Docs\\]](${pageUrl})\n\n` +
-      "### 08:00 保存链接\n\n" +
-      "### 08:05 文字摘录\n\n" +
-      "```text\nplain excerpt\n```\n\n" +
-      "### 08:06 富文本摘录\n\n" +
+    `#### [Example \\[Docs\\]](${pageUrl})\n\n` +
+      "- 08:00 保存链接\n\n" +
+      "- 08:05 文字摘录\n\n" +
+      "plain excerpt\n\n" +
+      "- 08:06 富文本摘录\n\n" +
       "**rich excerpt**\n\n" +
-      "### 08:07 截图\n\n" +
+      "- 08:07 截图\n\n" +
       `![[${screenshot.attachmentName}]]\n\n` +
-      "### 08:08 图片\n\n" +
+      "- 08:08 图片\n\n" +
       `![[${image.attachmentName}]]\n\n`
   );
 });
 
-test("appends after existing grouped headings without rewriting previous content", () => {
+test("appends after legacy source-line grouped headings without rewriting previous content", () => {
   assert.equal(
     buildUpdatedNoteContent(
       "## Legacy \\[Docs\\]\n来源：https://example.com/docs\n\n- 08:00 保存链接\n\nmanual note\n",
@@ -486,9 +535,26 @@ test("appends after existing grouped headings without rewriting previous content
         text: "same page excerpt",
         capturedAt: localIso(2026, 4, 29, 8, 5)
       },
-      "### 08:05 \u6587\u5b57\u6458\u5f55\n\n```text\nsame page excerpt\n```\n"
+      "- 08:05 \u6587\u5b57\u6458\u5f55\n\nsame page excerpt\n"
     ),
-    "## Legacy \\[Docs\\]\n\u6765\u6e90\uff1ahttps://example.com/docs\n\n- 08:00 \u4fdd\u5b58\u94fe\u63a5\n\nmanual note\n\n## [Renamed Tab](https://example.com/docs)\n\n### 08:05 \u6587\u5b57\u6458\u5f55\n\n```text\nsame page excerpt\n```\n\n"
+    "## Legacy \\[Docs\\]\n\u6765\u6e90\uff1ahttps://example.com/docs\n\n- 08:00 \u4fdd\u5b58\u94fe\u63a5\n\nmanual note\n\n- 08:05 \u6587\u5b57\u6458\u5f55\n\nsame page excerpt\n\n"
+  );
+});
+
+test("inserts into a legacy source-line group before the next legacy group", () => {
+  assert.equal(
+    buildUpdatedNoteContent(
+      "## First\n\u6765\u6e90\uff1ahttps://example.com/first\n\n- 08:00 \u4fdd\u5b58\u94fe\u63a5\n\n## Second\n\u6765\u6e90\uff1ahttps://example.com/second\n\n- 08:01 \u4fdd\u5b58\u94fe\u63a5\n",
+      {
+        type: "selection",
+        title: "First",
+        pageUrl: "https://example.com/first",
+        text: "same page excerpt",
+        capturedAt: localIso(2026, 4, 29, 8, 5)
+      },
+      "- 08:05 \u6587\u5b57\u6458\u5f55\n\nsame page excerpt\n"
+    ),
+    "## First\n\u6765\u6e90\uff1ahttps://example.com/first\n\n- 08:00 \u4fdd\u5b58\u94fe\u63a5\n\n- 08:05 \u6587\u5b57\u6458\u5f55\n\nsame page excerpt\n\n## Second\n\u6765\u6e90\uff1ahttps://example.com/second\n\n- 08:01 \u4fdd\u5b58\u94fe\u63a5\n"
   );
 });
 
@@ -503,9 +569,26 @@ test("keeps legacy source link entries and appends the next linked title entry",
         text: "same page excerpt",
         capturedAt: localIso(2026, 4, 29, 8, 5)
       },
-      "### 08:05 \u6587\u5b57\u6458\u5f55\n\n```text\nsame page excerpt\n```\n"
+      "- 08:05 \u6587\u5b57\u6458\u5f55\n\nsame page excerpt\n"
     ),
-    "- 08:00 [Legacy \\[Docs\\]](https://example.com/docs)\n\nmanual note\n\n## [Renamed Tab](https://example.com/docs)\n\n### 08:05 \u6587\u5b57\u6458\u5f55\n\n```text\nsame page excerpt\n```\n\n"
+    "- 08:00 [Legacy \\[Docs\\]](https://example.com/docs)\n\nmanual note\n\n#### [Renamed Tab](https://example.com/docs)\n\n- 08:05 \u6587\u5b57\u6458\u5f55\n\nsame page excerpt\n\n"
+  );
+});
+
+test("appends after existing level-four grouped headings without rewriting previous content", () => {
+  assert.equal(
+    buildUpdatedNoteContent(
+      "#### [Legacy \\[Docs\\]](https://example.com/docs)\n\n- 08:00 保存链接\n\nmanual note\n",
+      {
+        type: "selection",
+        title: "Renamed Tab",
+        pageUrl: "https://example.com/docs",
+        text: "same page excerpt",
+        capturedAt: localIso(2026, 4, 29, 8, 5)
+      },
+      "- 08:05 \u6587\u5b57\u6458\u5f55\n\nsame page excerpt\n"
+    ),
+    "#### [Legacy \\[Docs\\]](https://example.com/docs)\n\n- 08:00 \u4fdd\u5b58\u94fe\u63a5\n\nmanual note\n\n- 08:05 \u6587\u5b57\u6458\u5f55\n\nsame page excerpt\n\n"
   );
 });
 
@@ -533,7 +616,7 @@ test("serializes concurrent writes to the same daily note without dropping captu
 
   const content = await readFile(localDatePath(vaultPath, 2026, 4, 29), "utf8");
   for (let index = 0; index < 8; index += 1) {
-    assert.match(content, new RegExp(`## \\[Page ${index}\\]\\(https://example\\.com/${index}\\)\\n\\n### 08:0${index} \u4fdd\u5b58\u94fe\u63a5`));
+    assert.match(content, new RegExp(`#### \\[Page ${index}\\]\\(https://example\\.com/${index}\\)\\n\\n- 08:0${index} 保存链接`));
   }
 });
 
@@ -566,18 +649,18 @@ test("keeps captures from the same URL on different local dates in separate dail
 
   assert.equal(
     await readFile(localDatePath(vaultPath, 2026, 4, 29), "utf8"),
-    "## [Example](https://example.com/docs)\n\n### 23:59 \u4fdd\u5b58\u94fe\u63a5\n\n"
+    "#### [Example](https://example.com/docs)\n\n- 23:59 \u4fdd\u5b58\u94fe\u63a5\n\n"
   );
   assert.equal(
     await readFile(localDatePath(vaultPath, 2026, 4, 30), "utf8"),
-    "## [Example](https://example.com/docs)\n\n### 00:01 \u4fdd\u5b58\u94fe\u63a5\n\n"
+    "#### [Example](https://example.com/docs)\n\n- 00:01 \u4fdd\u5b58\u94fe\u63a5\n\n"
   );
 });
 
 test("closes an unclosed fenced code block before appending a new capture", () => {
   assert.equal(
-    buildAppendText("manual paste\n```*\nnot closed", "### 08:05 \u622a\u56fe\n\n![[shot.png]]\n"),
-    "\n\n```\n\n### 08:05 \u622a\u56fe\n\n![[shot.png]]\n\n"
+    buildAppendText("manual paste\n```*\nnot closed", "- 08:05 \u622a\u56fe\n\n![[shot.png]]\n"),
+    "\n\n```\n\n- 08:05 \u622a\u56fe\n\n![[shot.png]]\n\n"
   );
 });
 
@@ -591,16 +674,16 @@ test("closes an unclosed manual fenced block before appending a new linked title
         pageUrl: "https://example.com",
         capturedAt: localIso(2026, 4, 29, 8, 0)
       },
-      "### 08:00 \u4fdd\u5b58\u94fe\u63a5\n"
+      "- 08:00 \u4fdd\u5b58\u94fe\u63a5\n"
     ),
-    "manual paste\n```*\nnot closed\n\n```\n\n## [Example](https://example.com)\n\n### 08:00 \u4fdd\u5b58\u94fe\u63a5\n\n"
+    "manual paste\n```*\nnot closed\n\n```\n\n#### [Example](https://example.com)\n\n- 08:00 \u4fdd\u5b58\u94fe\u63a5\n\n"
   );
 });
 
 test("separates new captures from existing text that has no trailing newline", () => {
   assert.equal(
-    buildAppendText("manual paste without newline", "### 08:06 \u4fdd\u5b58\u94fe\u63a5\n"),
-    "\n\n### 08:06 \u4fdd\u5b58\u94fe\u63a5\n\n"
+    buildAppendText("manual paste without newline", "- 08:06 \u4fdd\u5b58\u94fe\u63a5\n"),
+    "\n\n- 08:06 \u4fdd\u5b58\u94fe\u63a5\n\n"
   );
 });
 
@@ -730,7 +813,7 @@ test("rejects non-image remote responses while still writing the markdown captur
     assert.equal(result.attachmentName, undefined);
     assert.equal(
       await readFile(localDatePath(vaultPath, 2026, 5, 7), "utf8"),
-      "## [Remote HTML](https://example.com/page)\n\n### 09:00 \u56fe\u7247\n\n\u56fe\u7247\u4e0b\u8f7d\u5931\u8d25\uff1a\u54cd\u5e94\u4e0d\u662f\u56fe\u7247\u5185\u5bb9\n\n"
+      "#### [Remote HTML](https://example.com/page)\n\n- 09:00 \u56fe\u7247\n\n\u56fe\u7247\u4e0b\u8f7d\u5931\u8d25\uff1a\u54cd\u5e94\u4e0d\u662f\u56fe\u7247\u5185\u5bb9\n\n"
     );
   } finally {
     globalThis.fetch = originalFetch;
@@ -806,8 +889,8 @@ test("rejects non-image and oversized data URLs without blocking markdown writes
   );
 
   const content = await readFile(localDatePath(vaultPath, 2026, 5, 7), "utf8");
-  assert.match(content, /## \[Text Data\]\(https:\/\/example\.com\/page\)\n\n### 09:02 \u56fe\u7247\n\n\u56fe\u7247\u4e0b\u8f7d\u5931\u8d25\uff1aInvalid data URL/);
-  assert.match(content, /### 09:03 \u622a\u56fe\n\n\u56fe\u7247\u4e0b\u8f7d\u5931\u8d25\uff1a\u56fe\u7247\u4f53\u79ef\u8d85\u8fc7 20MB/);
+  assert.match(content, /#### \[Text Data\]\(https:\/\/example\.com\/page\)\n\n- 09:02 \u56fe\u7247\n\n\u56fe\u7247\u4e0b\u8f7d\u5931\u8d25\uff1aInvalid data URL/);
+  assert.match(content, /- 09:03 \u622a\u56fe\n\n\u56fe\u7247\u4e0b\u8f7d\u5931\u8d25\uff1a\u56fe\u7247\u4f53\u79ef\u8d85\u8fc7 20MB/);
   assert.doesNotMatch(content, /来源图片|https:\/\/cdn\.example\.com/);
 });
 
@@ -1668,7 +1751,7 @@ test("diagnostic scripts cover Windows and macOS install chains", async () => {
   assert.doesNotMatch(macScript, /\btimeout 5\b/);
 });
 
-test("project metadata, CI, README, and changelog describe the current macOS resilience release", async () => {
+test("project metadata, CI, README, and changelog describe the current note format release", async () => {
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const manifest = JSON.parse(await readFile(new URL("../extension/manifest.json", import.meta.url), "utf8"));
   const license = await readFile(new URL("../LICENSE", import.meta.url), "utf8");
@@ -1677,8 +1760,8 @@ test("project metadata, CI, README, and changelog describe the current macOS res
   const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
   const changelog = await readFile(new URL("../版本记录README.md", import.meta.url), "utf8");
 
-  assert.equal(packageJson.version, "0.2.6");
-  assert.equal(manifest.version, "0.2.6");
+  assert.equal(packageJson.version, "0.2.7");
+  assert.equal(manifest.version, "0.2.7");
   assert.equal(manifest.background.type, "module");
   assert.match(license, /MIT License/);
   assert.match(ci, /windows-latest/);
@@ -1690,9 +1773,9 @@ test("project metadata, CI, README, and changelog describe the current macOS res
   assert.match(packageJson.scripts["release:zip"], /build-release/);
   assert.match(packageJson.scripts.check, /gesture-content-script\.js/);
   assert.match(gitignore, /^dist\/$/m);
-  assert.match(readme, /version-0\.2\.6/);
-  assert.match(readme, /最新更新：v0\.2\.6/);
-  assert.match(readme, /当前版本：`0\.2\.6`/);
+  assert.match(readme, /version-0\.2\.7/);
+  assert.match(readme, /最新更新：v0\.2\.7/);
+  assert.match(readme, /当前版本：`0\.2\.7`/);
   assert.match(readme, /Popup 一直显示加载态/);
   assert.match(readme, /Native Messaging 帧/);
   assert.match(readme, /native-host\.log/);
@@ -1704,7 +1787,9 @@ test("project metadata, CI, README, and changelog describe the current macOS res
   assert.match(readme, /单独 Markdown 文档/);
   assert.match(readme, /不再写入当天 Inbox 日记/);
   assert.match(readme, /同一天同一网址/);
-  assert.match(readme, /### HH:mm 类型/);
+  assert.match(readme, /#### \[页面标题\]\(页面URL\)/);
+  assert.match(readme, /- HH:mm 类型/);
+  assert.doesNotMatch(readme, /### HH:mm 类型/);
   assert.match(readme, /不再追加原始图片 URL/);
   assert.match(readme, /scripts\/diagnose\.ps1/);
   assert.match(readme, /scripts\/diagnose-macos\.sh/);
@@ -1713,11 +1798,12 @@ test("project metadata, CI, README, and changelog describe the current macOS res
   assert.match(readme, /打开今天 Inbox/);
   assert.match(readme, /富 Markdown/);
   assert.match(readme, /release zip/);
-  assert.match(changelog, /`v0\.2\.6` 是当前代码中可见的正式版本号/);
+  assert.match(changelog, /`v0\.2\.7` 是当前代码中可见的正式版本号/);
+  assert.match(changelog, /## v0\.2\.7 - 2026-05-25/);
   assert.match(changelog, /## v0\.2\.6 - 2026-05-25/);
   assert.match(changelog, /## 版本历史/);
   assert.match(changelog, /macOS Native Host 未响应/);
-  assert.match(changelog, /package\.json` 与 `extension\/manifest\.json` 版本同步为 `0\.2\.6`/);
+  assert.match(changelog, /package\.json` 与 `extension\/manifest\.json` 版本同步为 `0\.2\.7`/);
   assert.match(changelog, /Chrome headless CDP Popup 烟测/);
   assert.match(changelog, /## v0\.2\.5 - 2026-05-07/);
   assert.match(changelog, /页面剪藏/);
@@ -1725,7 +1811,8 @@ test("project metadata, CI, README, and changelog describe the current macOS res
   assert.match(changelog, /gesture-content-script/);
   assert.match(changelog, /单独 Markdown 文档/);
   assert.match(changelog, /同日同 URL 聚合/);
-  assert.match(changelog, /### HH:mm 类型/);
+  assert.match(changelog, /#### \[页面标题\]\(页面URL\)/);
+  assert.match(changelog, /- HH:mm 类型/);
   assert.match(changelog, /不再追加原始图片来源 URL/);
   assert.doesNotMatch(changelog, /当前目录未检测到 Git 仓库/);
   assert.doesNotMatch(changelog, /H0\.x/);

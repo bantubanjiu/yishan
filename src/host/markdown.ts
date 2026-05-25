@@ -18,24 +18,24 @@ export function formatCaptureEntry(
 }
 
 export function formatPageGroupHeading(message: Exclude<CaptureMessage, { type: "page" }>): string {
-  return `## [${escapeMarkdownLinkText(message.title)}](${message.pageUrl})`;
+  return `#### [${escapeMarkdownLinkText(message.title)}](${message.pageUrl})`;
 }
 
 export function formatCaptureSubentry(message: Exclude<CaptureMessage, { type: "page" }>, options: FormatCaptureOptions = {}): string {
   const timestamp = formatTime(message.capturedAt);
 
   if (message.type === "url") {
-    return `### ${timestamp} 保存链接\n`;
+    return `- ${timestamp} 保存链接\n`;
   }
 
   if (message.type === "selection") {
     if (hasRichSelectionMarkdown(message)) {
-      return `### ${timestamp} 富文本摘录\n\n${normalizeMarkdown(message.markdown ?? "")}\n`;
+      return `- ${timestamp} 富文本摘录\n\n${normalizeMarkdown(message.markdown ?? "")}\n`;
     }
-    return `### ${timestamp} 文字摘录\n\n${formatFencedCodeBlock(message.text, message.codeLanguage)}\n`;
+    return `- ${timestamp} 文字摘录\n\n${formatSelectionText(message.text, message.codeLanguage)}\n`;
   }
 
-  const lines = [`### ${timestamp} ${message.imageUrl.startsWith("data:image/") ? "截图" : "图片"}`, ""];
+  const lines = [`- ${timestamp} ${message.imageUrl.startsWith("data:image/") ? "截图" : "图片"}`, ""];
   if (options.attachmentName) {
     lines.push(`![[${options.attachmentName}]]`);
   } else if (options.imageError) {
@@ -81,12 +81,49 @@ function formatFencedCodeBlock(text: string, explicitLanguage?: string): string 
   return `${fence}${language}\n${content}\n${fence}`;
 }
 
+function formatSelectionText(text: string, explicitLanguage?: string): string {
+  const content = text.replace(/\r\n?/g, "\n").trim();
+  if (!content) {
+    return "";
+  }
+
+  if (shouldFenceSelectionText(content, explicitLanguage)) {
+    return formatFencedCodeBlock(content, explicitLanguage);
+  }
+
+  return content;
+}
+
+function shouldFenceSelectionText(content: string, explicitLanguage?: string): boolean {
+  return Boolean(normalizeCodeLanguage(explicitLanguage)) || detectCodeLanguage(content) !== "text" || content.includes("```");
+}
+
 function hasRichSelectionMarkdown(message: Extract<CaptureMessage, { type: "selection" }>): boolean {
   const markdown = normalizeMarkdown(message.markdown ?? "");
   if (!markdown) {
     return false;
   }
-  return markdown !== normalizeMarkdown(message.text) && markdown !== normalizePlainSelectionText(message.text);
+  return (
+    markdown !== normalizeMarkdown(message.text) &&
+    markdown !== normalizePlainSelectionText(message.text) &&
+    hasRichMarkdownFormatting(markdown)
+  );
+}
+
+function hasRichMarkdownFormatting(markdown: string): boolean {
+  return /(?:^|\n)\s{0,3}#{1,6}\s+\S/.test(markdown) ||
+    /(?:^|\n)\s*[-*+]\s+\S/.test(markdown) ||
+    /(?:^|\n)\s*\d+\.\s+\S/.test(markdown) ||
+    /(?:^|\n)\s*>\s+\S/.test(markdown) ||
+    /\*\*[^*\n][\s\S]*?\*\*/.test(markdown) ||
+    /__[^_\n][\s\S]*?__/.test(markdown) ||
+    /(?:^|[^*])\*(?!\*)[^*\n]+\*(?!\*)/.test(markdown) ||
+    /(?:^|[^_])_(?!_)[^_\n]+_(?!_)/.test(markdown) ||
+    /`[^`\n]+`/.test(markdown) ||
+    /~~[^~\n]+~~/.test(markdown) ||
+    /!\[[^\]]*]\([^)]+\)/.test(markdown) ||
+    /\[[^\]]+]\([^)]+\)/.test(markdown) ||
+    /(?:^|\n)\s*```/.test(markdown);
 }
 
 function normalizeMarkdown(markdown: string): string {
@@ -207,7 +244,10 @@ function looksLikeShell(content: string): boolean {
 }
 
 function looksLikeMarkdown(content: string): boolean {
-  return /(?:^|\n)\s{0,3}#{1,6}\s+\S/.test(content) || /(?:^|\n)\s*[-*+]\s+\S/.test(content) || /(?:^|\n)\s*>\s+\S/.test(content);
+  return /(?:^|\n)\s{0,3}#{1,6}\s+\S/.test(content) ||
+    /(?:^|\n)\s*[-*+]\s+\S/.test(content) ||
+    /(?:^|\n)\s*>\s+\S/.test(content) ||
+    /(?:^|\n)\s*```/.test(content);
 }
 
 function escapeMarkdownLinkText(value: string): string {

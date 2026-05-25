@@ -150,9 +150,23 @@ function insertIntoExistingPageGroup(
 }
 
 function findPageGroupHeading(markdown: string, pageUrl: string): { start: number; end: number } | undefined {
-  const headingPattern = /^## \[(?:[^\]\\]|\\.)*\]\(([^)\n]+)\)[ \t]*$/gm;
+  const headingPattern = /^#{2,4} \[(?:[^\]\\]|\\.)*\]\(([^)\n]+)\)[ \t]*$/gm;
   let match: RegExpExecArray | null;
   while ((match = headingPattern.exec(markdown)) !== null) {
+    if (match[1] === pageUrl) {
+      return {
+        start: match.index,
+        end: match.index + match[0].length
+      };
+    }
+  }
+  return findLegacySourceLineGroupHeading(markdown, pageUrl);
+}
+
+function findLegacySourceLineGroupHeading(markdown: string, pageUrl: string): { start: number; end: number } | undefined {
+  const sourcePattern = /^#{2,4} .*\n来源：([^\n]+)[ \t]*$/gm;
+  let match: RegExpExecArray | null;
+  while ((match = sourcePattern.exec(markdown)) !== null) {
     if (match[1] === pageUrl) {
       return {
         start: match.index,
@@ -164,10 +178,15 @@ function findPageGroupHeading(markdown: string, pageUrl: string): { start: numbe
 }
 
 function findNextPageGroupStart(markdown: string, fromIndex: number): number {
-  const nextHeadingPattern = /^## \[(?:[^\]\\]|\\.)*\]\([^)]+\)[ \t]*$/gm;
+  const nextHeadingPattern = /^#{2,4} \[(?:[^\]\\]|\\.)*\]\([^)]+\)[ \t]*$/gm;
   nextHeadingPattern.lastIndex = fromIndex;
-  const match = nextHeadingPattern.exec(markdown);
-  return match ? match.index : markdown.length;
+  const nextLinkedHeading = nextHeadingPattern.exec(markdown);
+
+  const nextSourceGroupPattern = /^#{2,4} .*\n来源：[^\n]+[ \t]*$/gm;
+  nextSourceGroupPattern.lastIndex = fromIndex;
+  const nextSourceGroup = nextSourceGroupPattern.exec(markdown);
+
+  return Math.min(nextLinkedHeading?.index ?? markdown.length, nextSourceGroup?.index ?? markdown.length);
 }
 
 async function readExistingFile(filePath: string): Promise<string> {

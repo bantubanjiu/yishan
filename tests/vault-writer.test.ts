@@ -32,7 +32,7 @@ test("creates the daily inbox note when it does not exist", async () => {
   );
 
   assert.equal(result.notePath, localDatePath(vaultPath, 2026, 4, 29));
-  assert.equal(await readFile(result.notePath, "utf8"), "- 08:00 [Example](https://example.com)\n\n");
+  assert.equal(await readFile(result.notePath, "utf8"), "#### [Example](https://example.com)\n\n- 08:00 保存链接\n\n");
 });
 
 test("appends to an existing daily inbox note without overwriting prior captures", async () => {
@@ -66,7 +66,7 @@ test("appends to an existing daily inbox note without overwriting prior captures
   const content = await readFile(localDatePath(vaultPath, 2026, 4, 29), "utf8");
   assert.equal(
     content,
-    "- 08:00 [First](https://example.com/1)\n\n- 08:01 [Second](https://example.com/2)\n\n```text\nuseful note\n```\n\n"
+    "#### [First](https://example.com/1)\n\n- 08:00 保存链接\n\n#### [Second](https://example.com/2)\n\n- 08:01 文字摘录\n\nuseful note\n\n"
   );
 });
 
@@ -101,12 +101,12 @@ test("appends same-day captures from the same page URL as timestamped source lin
   const content = await readFile(localDatePath(vaultPath, 2026, 4, 29), "utf8");
   assert.equal(
     content,
-    "- 08:00 [Example \\[Docs\\]](https://example.com/docs)\n\n- 08:05 [Renamed Tab](https://example.com/docs)\n\n```text\nsame page excerpt\n```\n\n"
+    "#### [Example \\[Docs\\]](https://example.com/docs)\n\n- 08:00 保存链接\n\n- 08:05 文字摘录\n\nsame page excerpt\n\n"
   );
-  assert.equal(content.match(/^## /gm)?.length ?? 0, 0);
+  assert.equal(content.match(/^#### /gm)?.length ?? 0, 1);
 });
 
-test("appends after existing grouped headings without rewriting previous content", () => {
+test("appends after legacy source-line grouped headings without rewriting previous content", () => {
   assert.equal(
     buildUpdatedNoteContent(
       "## Legacy \\[Docs\\]\n来源：https://example.com/docs\n\n- 08:00 保存链接\n\nmanual note\n",
@@ -117,9 +117,43 @@ test("appends after existing grouped headings without rewriting previous content
         text: "same page excerpt",
         capturedAt: localIso(2026, 4, 29, 8, 5)
       },
-      "- 08:05 [Renamed Tab](https://example.com/docs)\n\n```text\nsame page excerpt\n```\n"
+      "- 08:05 文字摘录\n\nsame page excerpt\n"
     ),
-    "## Legacy \\[Docs\\]\n来源：https://example.com/docs\n\n- 08:00 保存链接\n\nmanual note\n\n- 08:05 [Renamed Tab](https://example.com/docs)\n\n```text\nsame page excerpt\n```\n\n"
+    "## Legacy \\[Docs\\]\n来源：https://example.com/docs\n\n- 08:00 保存链接\n\nmanual note\n\n- 08:05 文字摘录\n\nsame page excerpt\n\n"
+  );
+});
+
+test("inserts into a legacy source-line group before the next legacy group", () => {
+  assert.equal(
+    buildUpdatedNoteContent(
+      "## First\n来源：https://example.com/first\n\n- 08:00 保存链接\n\n## Second\n来源：https://example.com/second\n\n- 08:01 保存链接\n",
+      {
+        type: "selection",
+        title: "First",
+        pageUrl: "https://example.com/first",
+        text: "same page excerpt",
+        capturedAt: localIso(2026, 4, 29, 8, 5)
+      },
+      "- 08:05 文字摘录\n\nsame page excerpt\n"
+    ),
+    "## First\n来源：https://example.com/first\n\n- 08:00 保存链接\n\n- 08:05 文字摘录\n\nsame page excerpt\n\n## Second\n来源：https://example.com/second\n\n- 08:01 保存链接\n"
+  );
+});
+
+test("appends after existing level-four grouped headings without rewriting previous content", () => {
+  assert.equal(
+    buildUpdatedNoteContent(
+      "#### [Legacy \\[Docs\\]](https://example.com/docs)\n\n- 08:00 保存链接\n\nmanual note\n",
+      {
+        type: "selection",
+        title: "Renamed Tab",
+        pageUrl: "https://example.com/docs",
+        text: "same page excerpt",
+        capturedAt: localIso(2026, 4, 29, 8, 5)
+      },
+      "- 08:05 文字摘录\n\nsame page excerpt\n"
+    ),
+    "#### [Legacy \\[Docs\\]](https://example.com/docs)\n\n- 08:00 保存链接\n\nmanual note\n\n- 08:05 文字摘录\n\nsame page excerpt\n\n"
   );
 });
 
@@ -134,9 +168,9 @@ test("keeps legacy source link entries and appends the next timestamped source l
         text: "same page excerpt",
         capturedAt: localIso(2026, 4, 29, 8, 5)
       },
-      "- 08:05 [Renamed Tab](https://example.com/docs)\n\n```text\nsame page excerpt\n```\n"
+      "- 08:05 文字摘录\n\nsame page excerpt\n"
     ),
-    "- 08:00 [Legacy \\[Docs\\]](https://example.com/docs)\n\nmanual note\n\n- 08:05 [Renamed Tab](https://example.com/docs)\n\n```text\nsame page excerpt\n```\n\n"
+    "- 08:00 [Legacy \\[Docs\\]](https://example.com/docs)\n\nmanual note\n\n#### [Renamed Tab](https://example.com/docs)\n\n- 08:05 文字摘录\n\nsame page excerpt\n\n"
   );
 });
 
@@ -164,7 +198,7 @@ test("serializes concurrent writes to the same daily note without dropping captu
 
   const content = await readFile(localDatePath(vaultPath, 2026, 4, 29), "utf8");
   for (let index = 0; index < 8; index += 1) {
-    assert.match(content, new RegExp(`- 08:0${index} \\[Page ${index}\\]\\(https://example\\.com/${index}\\)`));
+    assert.match(content, new RegExp(`#### \\[Page ${index}\\]\\(https://example\\.com/${index}\\)\\n\\n- 08:0${index} 保存链接`));
   }
 });
 
@@ -197,11 +231,11 @@ test("keeps captures from the same URL on different local dates in separate dail
 
   assert.equal(
     await readFile(localDatePath(vaultPath, 2026, 4, 29), "utf8"),
-    "- 23:59 [Example](https://example.com/docs)\n\n"
+    "#### [Example](https://example.com/docs)\n\n- 23:59 保存链接\n\n"
   );
   assert.equal(
     await readFile(localDatePath(vaultPath, 2026, 4, 30), "utf8"),
-    "- 00:01 [Example](https://example.com/docs)\n\n"
+    "#### [Example](https://example.com/docs)\n\n- 00:01 保存链接\n\n"
   );
 });
 
@@ -215,9 +249,9 @@ test("closes an unclosed manual fenced block before appending a new source link"
         pageUrl: "https://example.com",
         capturedAt: localIso(2026, 4, 29, 8, 0)
       },
-      "- 08:00 [Example](https://example.com)\n"
+      "- 08:00 保存链接\n"
     ),
-    "manual paste\n```*\nnot closed\n\n```\n\n- 08:00 [Example](https://example.com)\n\n"
+    "manual paste\n```*\nnot closed\n\n```\n\n#### [Example](https://example.com)\n\n- 08:00 保存链接\n\n"
   );
 });
 
