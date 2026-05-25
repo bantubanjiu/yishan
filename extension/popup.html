@@ -7,88 +7,90 @@
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <main class="popup-shell">
-      <header class="hero">
-        <div>
-          <p class="eyebrow">采集控制台</p>
-          <h1>移山</h1>
-          <p class="subtitle">把当前页面、摘录、图片和截图送进今天的 Obsidian。</p>
-        </div>
-        <span class="mark" aria-hidden="true">山</span>
+    <main class="popup-container">
+      <header class="header">
+        <h1 class="logo">移山</h1>
+        <button class="btn-secondary btn-small" id="openTodayInbox" type="button">
+          <span class="icon" aria-hidden="true">📥</span>
+          今日 Inbox
+        </button>
       </header>
 
-      <section class="quick-actions" aria-label="立即采集">
-        <button class="primary action-card" id="saveCurrentPage" type="button">
-          <span>
-            <strong>保存当前页面</strong>
-            <small>剪藏正文为单独 Markdown</small>
-          </span>
-        </button>
-        <button class="action-card" id="saveCurrentWindow" type="button">
-          <span>
-            <strong>保存当前窗口标签</strong>
-            <small>保存全部普通网页链接</small>
-          </span>
-        </button>
-        <div class="action-grid">
-          <button class="action-card" id="captureScreenshot" type="button">
-            <span>
+      <div class="content">
+        <section class="section">
+          <h2 class="section-title">采集内容</h2>
+          <div class="actions-stack">
+            <button class="action-card" id="saveCurrentPage" type="button">
+              <div class="action-icon purple">
+                <span class="icon">📄</span>
+              </div>
+              <div class="action-meta">
+                <strong>保存当前页面</strong>
+                <small>提取正文为 Markdown 文档</small>
+              </div>
+            </button>
+            <button class="action-card" id="saveCurrentWindow" type="button">
+              <div class="action-icon purple">
+                <span class="icon">📚</span>
+              </div>
+              <div class="action-meta">
+                <strong>保存当前窗口</strong>
+                <small>保存全部普通网页链接</small>
+              </div>
+            </button>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="actions-grid">
+            <button class="action-card vertical" id="captureScreenshot" type="button">
+              <div class="action-icon purple">
+                <span class="icon">✂️</span>
+              </div>
               <strong>框选截图</strong>
-              <small>拖拽选择区域</small>
-            </span>
-          </button>
-          <button class="action-card" id="captureViewport" type="button">
-            <span>
-              <strong>保存当前视口</strong>
-              <small>不是滚动长截图</small>
-            </span>
-          </button>
-        </div>
-      </section>
+            </button>
+            <button class="action-card vertical" id="captureViewport" type="button">
+              <div class="action-icon purple">
+                <span class="icon">🖥️</span>
+              </div>
+              <strong>当前视口</strong>
+            </button>
+          </div>
+        </section>
 
-      <section class="summary-card" aria-label="当前状态">
-        <div class="section-heading">
-          <h2>保存状态</h2>
-          <button class="ghost" id="reload" type="button">刷新</button>
-        </div>
-        <dl class="status-list">
-          <div>
-            <dt>Vault</dt>
-            <dd id="vaultState">正在读取...</dd>
+        <section class="section">
+          <div class="section-header">
+            <h2 class="section-title">当前状态</h2>
+            <button class="btn-text" id="reload" type="button">刷新</button>
           </div>
-          <div>
-            <dt>拖选摘录</dt>
-            <dd id="gestureSummary">正在读取...</dd>
+          <div class="status-card">
+            <div class="status-item">
+              <span class="label">Vault</span>
+              <span class="value" id="vaultState">正在读取...</span>
+            </div>
+            <div class="status-item">
+              <span class="label">拖选摘录</span>
+              <span class="value" id="gestureSummary">正在读取...</span>
+            </div>
+            <div class="status-item hidden">
+              <span class="label">摘录模式</span>
+              <span class="value" id="modeSummary">正在读取...</span>
+            </div>
+            <div class="status-item">
+              <span class="label">快捷键</span>
+              <span class="value" id="shortcutSummary">正在读取...</span>
+            </div>
           </div>
-          <div>
-            <dt>摘录模式</dt>
-            <dd id="modeSummary">正在读取...</dd>
-          </div>
-          <div>
-            <dt>快捷键状态</dt>
-            <dd id="shortcutSummary">正在读取...</dd>
-          </div>
-        </dl>
-        <div class="path-actions" aria-label="工具入口">
-          <button class="ghost" id="openTodayInbox" type="button">打开今天 Inbox</button>
-          <button class="ghost" id="openOptions" type="button">完整设置</button>
-        </div>
-      </section>
+        </section>
 
-      <section class="help-card" aria-label="更多保存方式">
-        <h2>更多保存方式</h2>
-        <ul>
-          <li>页面空白处右键：保存页面剪藏</li>
-          <li>选中文本右键：保存摘录</li>
-          <li>图片右键：保存图片</li>
-          <li><kbd>Ctrl+Shift+S</kbd>：保存当前窗口标签</li>
-          <li><kbd>Ctrl+Shift+X</kbd>：框选截图</li>
-          <li>若显示未绑定或被占用，请打开 Chrome 快捷键设置重新绑定。</li>
-        </ul>
-        <button class="link-button" id="openShortcuts" type="button">打开 Chrome 快捷键设置</button>
-      </section>
+        <footer class="footer">
+          <button class="btn-link" id="openOptions" type="button">完整设置</button>
+          <div class="divider"></div>
+          <button class="btn-link" id="openShortcuts" type="button">快捷键</button>
+        </footer>
 
-      <p id="status" class="status" role="status" aria-live="polite">准备就绪。</p>
+        <p id="status" class="status-bar" role="status" aria-live="polite">准备就绪。</p>
+      </div>
     </main>
 
     <script type="module" src="popup.js"></script>

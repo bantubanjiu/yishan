@@ -190,10 +190,18 @@ function normalizeSelectionModifier(value) {
 function setBusy(isBusy) {
   for (const button of buttons) {
     button.disabled = isBusy;
+    if (isBusy) {
+      button.classList.add("is-loading");
+    } else {
+      button.classList.remove("is-loading");
+    }
   }
 }
 
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
-  statusEl.classList.toggle("error", isError);
+  statusEl.className = "status-msg"; // Reset
+  if (isError) {
+    statusEl.classList.add("error");
+  }
 }
