@@ -15,6 +15,7 @@ import {
   pickFolderWithPowerShell
 } from "../src/host/host-request.ts";
 import { normalizeSelectionRect } from "../extension/screenshot-crop.js";
+import { notify } from "../extension/utils.js";
 import { decodeNativeMessages, encodeNativeMessage } from "../src/host/native-protocol.ts";
 import { buildAppendText, buildUpdatedNoteContent, writeCaptureToVault } from "../src/host/vault-writer.ts";
 
@@ -977,6 +978,50 @@ test("localizes clipped page images and replaces markdown references with Obsidi
   assert.doesNotMatch(content, /https:\/\/cdn\.example\.com\/(?:hero|inline)/);
 });
 
+test("image capture result reports download failure", async () => {
+  const vaultPath = await mkdtemp(path.join(tmpdir(), "vault-"));
+  const result = await writeCaptureToVault(
+    {
+      type: "image",
+      title: "Image",
+      pageUrl: "https://example.com/page",
+      imageUrl: "https://cdn.example.com/blocked.png",
+      capturedAt: localIso(2026, 5, 9, 9, 0)
+    },
+    { vaultPath, inboxDir: "Inbox", attachmentsDir: "Inbox/attachments" },
+    {
+      fetchBinary: async (_url, options) => {
+        assert.deepEqual(options, { referer: "https://example.com/page" });
+        throw new Error("HTTP 403");
+      }
+    }
+  );
+
+  assert.deepEqual(result.imageFailures, ["HTTP 403"]);
+});
+
+test("page capture result reports image localization failures", async () => {
+  const vaultPath = await mkdtemp(path.join(tmpdir(), "vault-"));
+  const result = await writeCaptureToVault(
+    {
+      type: "page",
+      title: "Image Failures",
+      pageUrl: "https://example.com/page",
+      markdown: "# Image Failures\n\n![Hero](https://cdn.example.com/hero.png)",
+      images: [{ url: "https://cdn.example.com/hero.png", alt: "Hero" }],
+      capturedAt: localIso(2026, 5, 9, 10, 0)
+    },
+    { vaultPath, inboxDir: "Inbox", attachmentsDir: "Inbox/attachments" },
+    {
+      fetchBinary: async () => {
+        throw new Error("HTTP 403");
+      }
+    }
+  );
+
+  assert.deepEqual(result.imageFailures, ["[Hero](https://cdn.example.com/hero.png) - HTTP 403"]);
+});
+
 test("keeps clipped page markdown writable when image localization fails", async () => {
   const vaultPath = await mkdtemp(path.join(tmpdir(), "clipper-vault-"));
 
@@ -1480,7 +1525,34 @@ test("macOS native host install registers user Chrome and Edge manifests", async
   assert.match(script, /chmod 755 "\$launcher_path"/);
   assert.match(script, /native-host\.log/);
   assert.match(script, /2>>"\\\$log_path"/);
+  assert.match(script, /extension_id="\$\{extension_id#<\}"/);
+  assert.match(script, /extension_id="\$\{extension_id%>\}"/);
   assert.match(script, /allowed_origins/);
+});
+
+test("macOS native host install strips README placeholder brackets from extension ID", async () => {
+  const tempHome = await mkdtemp(path.join(tmpdir(), "clipper-install-home-"));
+  const scriptPath = fileURLToPath(new URL("../scripts/install-native-host-macos.sh", import.meta.url));
+  const child = spawn("bash", [scriptPath, "--extension-id", "<abcdefghijklmnopabcdefghijklmnop>"], {
+    env: {
+      ...process.env,
+      HOME: tempHome
+    },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+
+  const exitCode = await new Promise((resolve, reject) => {
+    child.on("error", reject);
+    child.on("close", resolve);
+  });
+  assert.equal(exitCode, 0);
+
+  const manifestPath = path.join(
+    tempHome,
+    "Library/Application Support/Google/Chrome/NativeMessagingHosts/com.local.obsidian_web_clipper.json"
+  );
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  assert.deepEqual(manifest.allowed_origins, ["chrome-extension://abcdefghijklmnopabcdefghijklmnop/"]);
 });
 
 test("native messaging stdio host responds to an unconfigured get-config request", async () => {
@@ -1511,6 +1583,61 @@ test("native messaging stdio host responds to an unconfigured get-config request
   });
 });
 
+test("native messaging stdio host responds before stdin closes", async () => {
+  const tempHome = await mkdtemp(path.join(tmpdir(), "clipper-home-"));
+  const hostPath = fileURLToPath(new URL("../src/host/index.ts", import.meta.url));
+  const child = spawn(process.execPath, [hostPath], {
+    env: {
+      ...process.env,
+      HOME: tempHome,
+      USERPROFILE: tempHome
+    },
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+
+  const responsePromise = readOneNativeResponse(child.stdout);
+  child.stdin.write(encodeNativeMessage({ type: "get-config" }));
+
+  assert.deepEqual(await responsePromise, {
+    ok: true,
+    config: {
+      vaultPath: "",
+      inboxDir: "Inbox",
+      attachmentsDir: "Inbox/attachments",
+      selectionModifier: "Alt",
+      selectionGestureEnabled: false,
+      selectionSaveMode: "plain"
+    }
+  });
+  child.kill();
+});
+
+test("native messaging stdio host ignores downstream pipe closure", async () => {
+  const tempHome = await mkdtemp(path.join(tmpdir(), "clipper-home-"));
+  const hostPath = fileURLToPath(new URL("../src/host/index.ts", import.meta.url));
+  const child = spawn(process.execPath, [hostPath], {
+    env: {
+      ...process.env,
+      HOME: tempHome,
+      USERPROFILE: tempHome
+    },
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+
+  const stderrChunks = [];
+  child.stderr.on("data", (chunk) => stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+  child.stdout.destroy();
+  child.stdin.end(encodeNativeMessage({ type: "get-config" }));
+
+  const exitCode = await new Promise((resolve, reject) => {
+    child.on("error", reject);
+    child.on("close", resolve);
+  });
+  assert.equal(exitCode, 0);
+  assert.doesNotMatch(Buffer.concat(stderrChunks).toString("utf8"), /EPIPE|Unhandled 'error'/);
+});
+
+
 test("native host install defaults to running host code from the repository", async () => {
   const script = await readFile(new URL("../scripts/install-native-host.ps1", import.meta.url), "utf8");
 
@@ -1535,6 +1662,65 @@ test("extension manifest exposes popup and keyboard commands", async () => {
   assert.equal(manifest.commands["capture-screenshot-area"].suggested_key.default, "Ctrl+Shift+X");
   assert.deepEqual(manifest.content_scripts?.[0]?.matches, ["http://*/*", "https://*/*"]);
   assert.deepEqual(manifest.content_scripts?.[0]?.js, ["gesture-content-script.js"]);
+});
+
+test("extension notifications also show action badge feedback when system notifications are hidden", () => {
+  const originalChrome = globalThis.chrome;
+  const originalSetTimeout = globalThis.setTimeout;
+  const calls = [];
+
+  globalThis.chrome = {
+    runtime: {
+      getURL: (targetPath) => `chrome-extension://test/${targetPath}`,
+      lastError: null
+    },
+    notifications: {
+      create: (payload, callback) => {
+        calls.push(["notification", payload]);
+        callback?.();
+      }
+    },
+    action: {
+      setBadgeBackgroundColor: (payload) => calls.push(["badgeColor", payload]),
+      setBadgeText: (payload) => calls.push(["badgeText", payload]),
+      setTitle: (payload) => calls.push(["title", payload])
+    }
+  };
+  globalThis.setTimeout = (callback, delay) => {
+    calls.push(["timeout", delay]);
+    callback();
+    return 1;
+  };
+
+  try {
+    notify("已保存到 Obsidian");
+    notify("已保存，但 1 张图片本地化失败", { isWarning: true });
+    notify("保存失败：Native Host 不可用", { isError: true });
+  } finally {
+    globalThis.chrome = originalChrome;
+    globalThis.setTimeout = originalSetTimeout;
+  }
+
+  assert.ok(calls.some(([type, payload]) => type === "badgeText" && payload.text === "✓"));
+  assert.ok(calls.some(([type, payload]) => type === "badgeText" && payload.text === "!"));
+  assert.ok(calls.some(([type, payload]) => type === "badgeText" && payload.text === ""));
+  assert.ok(calls.some(([type, payload]) => type === "badgeColor" && payload.color === "#16a34a"));
+  assert.ok(calls.some(([type, payload]) => type === "badgeColor" && payload.color === "#f59e0b"));
+  assert.ok(calls.some(([type, payload]) => type === "badgeColor" && payload.color === "#dc2626"));
+  assert.ok(calls.some(([type, payload]) => type === "title" && payload.title.includes("已保存到 Obsidian")));
+  assert.ok(calls.some(([type, delay]) => type === "timeout" && delay >= 3_000));
+  assert.ok(
+    calls.some(
+      ([type, payload]) =>
+        type === "notification" && payload.title === "移山" && payload.message === "已保存到 Obsidian"
+    )
+  );
+  assert.ok(
+    calls.some(
+      ([type, payload]) =>
+        type === "notification" && payload.title === "移山保存失败" && payload.message === "保存失败：Native Host 不可用"
+    )
+  );
 });
 
 test("context menu places screenshot above clipped page save and page save builds a page clip", async () => {
@@ -1661,10 +1847,49 @@ test("extension popup presents a capture console and keeps full settings in opti
   assert.match(optionsJs, /selectionSaveMode/);
   assert.match(optionsJs, /hiddenConfig[.]inboxDir/);
   assert.match(optionsJs, /hiddenConfig[.]attachmentsDir/);
+  assert.doesNotMatch(optionsJs, /Inbox\\\\attachments/);
   assert.match(optionsJs, /withTimeout/);
   assert.match(optionsJs, /ENTRANCE_BUTTON_IDS/);
   assert.match(optionsJs, /setBusy\(true,\s*\{ allowEntrances: true \}/);
+  assert.match(optionsJs, /function isInteractiveNativeMessage/);
+  assert.match(optionsJs, /message\?\.type === "pick-folder"/);
+  assert.match(optionsJs, /await saveConfig\(\)/);
 });
+
+test("extension surfaces page image localization failures to the user", async () => {
+  const background = await readFile(new URL("../extension/background.js", import.meta.url), "utf8");
+  const popupJs = await readFile(new URL("../extension/popup.js", import.meta.url), "utf8");
+
+  assert.match(background, /summarizePageImageFailures/);
+  assert.match(background, /formatSaveNotification/);
+  assert.match(background, /图片下载失败/);
+  assert.match(background, /imageFailures/);
+  assert.match(popupJs, /formatSaveCurrentPageStatus/);
+  assert.match(popupJs, /response\.imageFailures/);
+  assert.match(popupJs, /notifySaveResult[\s\S]*imageFailures/);
+});
+
+test("extension routes save outcomes through visible success, warning, and error feedback", async () => {
+  const background = await readFile(new URL("../extension/background.js", import.meta.url), "utf8");
+  const commands = await readFile(new URL("../extension/commands.js", import.meta.url), "utf8");
+  const popupJs = await readFile(new URL("../extension/popup.js", import.meta.url), "utf8");
+
+  assert.match(background, /notificationOptionsForResponse/);
+  assert.match(background, /notify\(formatSaveNotification\(capture,\s*response\),\s*notificationOptionsForResponse\(response\)\)/);
+  assert.match(background, /保存失败[\s\S]*\{ isError: true \}/);
+  assert.match(
+    background,
+    /message\.type === "capture-screenshot"[\s\S]*notify\(formatSaveNotification\(\{ type: "image" \}, response\),\s*notificationOptionsForResponse\(response\)\)/
+  );
+  assert.match(background, /截图保存失败[\s\S]*\{ isError: true \}/);
+  assert.match(commands, /notify\("截图已保存到 Obsidian",\s*\{ isWarning: hasImageFailures\(response\) \}\)/);
+  assert.match(commands, /notify\(formatBatchSaveNotification\(result\),\s*\{ isWarning: result\.failed > 0 \}\)/);
+  assert.match(commands, /快捷键操作失败[\s\S]*\{ isError: true \}/);
+  assert.match(popupJs, /import \{ notify \} from "\.\/utils\.js"/);
+  assert.match(popupJs, /notify\(message,\s*\{ isError,\s*isWarning \}\)/);
+  assert.doesNotMatch(popupJs, /notifySaveResult\([^;]*Boolean\(result\?\.imageFailures\?\.length\)/);
+});
+
 
 test("popup screenshot action dispatches before closing so page selection can start", async () => {
   const popupJs = await readFile(new URL("../extension/popup.js", import.meta.url), "utf8");
@@ -1721,6 +1946,8 @@ test("image downloader implementation documents timeout and size safety limits",
   assert.match(vaultWriter, /IMAGE_DOWNLOAD_TIMEOUT_MS\s*=\s*10_000/);
   assert.match(vaultWriter, /MAX_IMAGE_BYTES\s*=\s*20\s*\*\s*1024\s*\*\s*1024/);
   assert.match(vaultWriter, /AbortController/);
+  assert.match(vaultWriter, /User-Agent/);
+  assert.match(vaultWriter, /Referer/);
 });
 
 test("diagnostic scripts cover Windows and macOS install chains", async () => {
@@ -1742,12 +1969,17 @@ test("diagnostic scripts cover Windows and macOS install chains", async () => {
 
   assert.match(windowsScript, /ObsidianWebClipperLocal/);
   assert.match(windowsScript, /NativeMessagingHosts/);
+  assert.match(windowsScript, /\[regex\]::Escape\(\$ExtensionId\)/);
+  assert.match(macScript, /chrome-extension:\/\/\$\{extension_id\}\//);
   assert.match(macScript, /Google\/Chrome\/NativeMessagingHosts/);
   assert.match(macScript, /Microsoft Edge\/NativeMessagingHosts/);
   assert.match(macScript, /native-host/);
   assert.match(macScript, /Native Messaging handshake/);
   assert.match(macScript, /encodeNativeMessage/);
-  assert.match(macScript, /timeout:\s*5_000/);
+  assert.match(macScript, /spawn\(launcher/);
+  assert.match(macScript, /child\.stdin\.write\(encodeNativeMessage/);
+  assert.match(macScript, /5_000/);
+  assert.doesNotMatch(macScript, /spawnSync/);
   assert.doesNotMatch(macScript, /\btimeout 5\b/);
 });
 

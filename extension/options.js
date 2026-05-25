@@ -19,7 +19,7 @@ const ENTRANCE_BUTTON_IDS = new Set(["openShortcuts", "reload"]);
 const MESSAGE_TIMEOUT_MS = 4_000;
 let hiddenConfig = {
   inboxDir: "Inbox",
-  attachmentsDir: "Inbox\\attachments"
+  attachmentsDir: "Inbox/attachments"
 };
 
 const saveButton = document.querySelector("#save");
@@ -65,7 +65,8 @@ async function chooseVaultFolder() {
     throw new Error("没有返回文件夹路径。");
   }
   fields.vaultPath.value = selectedPath;
-  setStatus("已选择 Vault 路径，记得保存设置。");
+  await saveConfig();
+  setStatus("已选择并保存 Vault 路径。");
 }
 
 async function openShortcuts() {
@@ -119,18 +120,24 @@ function readConfig() {
 
 async function sendAction(message, fallback) {
   const timeoutMessage = "请求超时，请检查 Native Host 安装或稍后重试。";
+  const canUseFallback = typeof fallback === "function" && !isInteractiveNativeMessage(message);
+  const runWithTimeout = (promise) => isInteractiveNativeMessage(message) ? promise : withTimeout(promise, timeoutMessage);
   try {
-    const response = await withTimeout(sendRuntimeMessage(message), timeoutMessage);
-    if (response?.ok === false && canFallbackFromResponse(response) && typeof fallback === "function") {
-      return withTimeout(fallback(new Error(response.error)), timeoutMessage);
+    const response = await runWithTimeout(sendRuntimeMessage(message));
+    if (response?.ok === false && canFallbackFromResponse(response) && canUseFallback) {
+      return runWithTimeout(fallback(new Error(response.error)));
     }
     return response;
   } catch (error) {
-    if (typeof fallback === "function") {
+    if (canUseFallback) {
       return withTimeout(fallback(error), timeoutMessage);
     }
     throw error;
   }
+}
+
+function isInteractiveNativeMessage(message) {
+  return message?.type === "pick-folder";
 }
 
 async function fallbackOpenShortcuts() {

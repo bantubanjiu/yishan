@@ -256,6 +256,11 @@ button {
   background: #fef2f2;
 }
 
+.status-bar.warning {
+  color: #92400e;
+  background: #fffbeb;
+}
+
 .hidden {
   display: none;
 }

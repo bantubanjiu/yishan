@@ -8,13 +8,14 @@ import { formatCaptureEntry, formatCaptureSubentry, formatPageGroupHeading } fro
 import type { AppConfig, CaptureMessage } from "./types.ts";
 
 export type VaultWriterDeps = {
-  fetchBinary?: (url: string) => Promise<FetchBinaryResult>;
+  fetchBinary?: (url: string, options?: { referer?: string }) => Promise<FetchBinaryResult>;
 };
 
 export type VaultWriteResult = {
   notePath: string;
   attachmentName?: string;
   attachments?: string[];
+  imageFailures?: string[];
 };
 
 export async function writeCaptureToVault(
@@ -42,7 +43,7 @@ export async function writeCaptureToVault(
     try {
       await mkdir(attachmentsPath, { recursive: true });
       const fetchBinary = deps.fetchBinary ?? defaultFetchBinary;
-      const downloaded = await fetchBinary(message.imageUrl);
+      const downloaded = await fetchBinary(message.imageUrl, { referer: message.pageUrl });
       validateDownloadedImage(downloaded);
       attachmentName = buildAttachmentName(message, downloaded.contentType);
       await writeFile(path.join(attachmentsPath, attachmentName), downloaded.bytes, { flag: "wx" });
@@ -56,7 +57,7 @@ export async function writeCaptureToVault(
     const existingContent = await readExistingFile(notePath);
     await writeFile(notePath, buildUpdatedNoteContent(existingContent, message, entry), "utf8");
   });
-  return { notePath, attachmentName };
+  return { notePath, attachmentName, imageFailures: imageError ? [imageError] : [] };
 }
 
 async function writePageCaptureToVault(
@@ -75,7 +76,7 @@ async function writePageCaptureToVault(
 
     for (const image of message.images) {
       try {
-        const downloaded = await fetchBinary(image.url);
+        const downloaded = await fetchBinary(image.url, { referer: message.pageUrl });
         validateDownloadedImage(downloaded);
         const attachmentName = buildPageAttachmentName(message, image.url, downloaded.contentType);
         await writeAttachmentWithoutCollision(path.join(attachmentsPath, attachmentName), downloaded.bytes);
@@ -98,7 +99,7 @@ async function writePageCaptureToVault(
   } finally {
     await reservedNote.handle.close();
   }
-  return { notePath: reservedNote.notePath, attachments };
+  return { notePath: reservedNote.notePath, attachments, imageFailures: imageErrors };
 }
 
 export function buildUpdatedNoteContent(existingContent: string, message: CaptureMessage, entry: string): string {

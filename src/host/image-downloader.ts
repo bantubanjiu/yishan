@@ -6,7 +6,7 @@ export type FetchBinaryResult = {
   contentType?: string;
 };
 
-export async function defaultFetchBinary(url: string): Promise<FetchBinaryResult> {
+export async function defaultFetchBinary(url: string, options: { referer?: string } = {}): Promise<FetchBinaryResult> {
   if (url.startsWith("data:")) {
     return decodeDataUrl(url);
   }
@@ -14,7 +14,10 @@ export async function defaultFetchBinary(url: string): Promise<FetchBinaryResult
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), IMAGE_DOWNLOAD_TIMEOUT_MS);
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: buildImageRequestHeaders(url, options.referer)
+    });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -72,6 +75,25 @@ function decodeDataUrl(url: string): FetchBinaryResult {
   }
 
   return { bytes, contentType };
+}
+
+
+function buildImageRequestHeaders(url: string, referer?: string): HeadersInit {
+  const headers: Record<string, string> = {
+    Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari",
+    Referer: referer || refererFor(url)
+  };
+  return headers;
+}
+
+function refererFor(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.protocol}//${parsed.host}/`;
+  } catch {
+    return "https://www.google.com/";
+  }
 }
 
 function isImageContentType(contentType?: string): boolean {

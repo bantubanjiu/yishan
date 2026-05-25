@@ -39,6 +39,11 @@ Windows/macOS + Chrome/Edge 本地网页采集器：把页面剪藏、选中文�
 
 ## 最新更新：v0.2.7
 
+- macOS Native Host 改为收到完整 Native Messaging 帧后立即响应，不再等待浏览器关闭 stdin，解决安装后请求超时或 Popup 卡住的问题。
+- macOS 诊断脚本会用同样的长连接方式模拟 Chrome，并自动清理 README 示例里的 `<扩展ID>` 尖括号，避免 allowed_origins 误配。
+- 完整设置里选择 Vault 文件夹后会立即保存配置；macOS 系统文件夹选择器不再被普通请求超时逻辑提前打断。
+- 保存结果不只依赖系统通知：扩展图标会短暂显示绿色 `✓`、橙色 `!` 或红色 `!`，即使 macOS/Chrome 通知被静默也能看到成功、警告或失败。
+- 页面图片或右键图片下载失败时会把失败原因回传到 Popup/通知和 Markdown，不会静默失败；正文或记录本身仍会保存。
 - 当天 Inbox 的轻量采集改为 Obsidian 汇总友好格式：来源网页使用 `#### [页面标题](页面URL)`，每次保存材料使用 `- HH:mm 类型`，不再把记录点写成标题。
 - 选中文本默认尽量以普通文本落盘；只有富 Markdown 确实包含标题、加粗、链接、列表、引用、代码块或图片等格式信息时才保留富文本。
 - 兼容旧版 `## [标题](URL)` 与“来源：URL”分组，后续同 URL 记录会继续追加到原分组，避免拆散已有日记。
@@ -62,6 +67,7 @@ Windows/macOS + Chrome/Edge 本地网页采集器：把页面剪藏、选中文�
 | 拖选生命周期同步 | 启用拖选保存后，普通 `http/https` 页面会随内容脚本自动请求同步；标签切换、页面刷新、窗口重新聚焦后也会补同步状态。 |
 | 本地阅读器支持 | 支持保存 `file://` 本地页面/文本链接；Chrome PDF 阅读器可保存文件链接，选区能力受浏览器限制。 |
 | Popup 状态 | Popup 提供快速采集、今天 Inbox 入口、设置入口、拖选状态和快捷键绑定状态；完整配置在选项页完成。 |
+| 保存结果反馈 | 成功、部分失败和失败会同时尝试系统通知与扩展图标徽标反馈，避免 macOS/Chrome 通知被静默时无法判断是否保存成功。 |
 | 本地静默写入 | Chrome/Edge 扩展通过 Native Messaging 调用本地 Node Host 写入 Vault。 |
 | 请求安全校验 | Host 端统一校验请求 schema，非法请求返回 `{ ok:false, error:"..." }`。 |
 | 追加保护 | 写入前处理空行和未闭合代码块，降低破坏当天日记的概率。 |
@@ -166,7 +172,8 @@ bash ./scripts/install-native-host-macos.sh --extension-id "<扩展ID>" --snapsh
 - 图片上右键：下载图片并保存为附件；日记里只嵌入附件，不再追加原始图片 URL。非图片响应、超时或超过 20MB 会记录失败原因，不阻断正文保存；同一天同一网址的图片会追加在该网页链接下面。
 - 右键菜单中“框选截图保存到 Obsidian”位于“保存当前页面剪藏到 Obsidian”上方；也可用快捷键 `Ctrl+Shift+X` 框选截图并保存。
 - 快捷键 `Ctrl+Shift+S`：用单次 Native Message 保存当前窗口全部普通 `http/https/file` 标签。快捷键可在 `chrome://extensions/shortcuts` 中自定义；如果 Popup 或设置页提示“未绑定或被占用”，请在该页面重新绑定。
-- 修改 Vault 路径时点击“选择文件夹”，Native Host 会弹出系统文件夹选择器。
+- 修改 Vault 路径时点击“选择文件夹”，Native Host 会弹出系统文件夹选择器；选择成功后会自动保存配置。
+- 保存后如果系统通知没有弹出，请看浏览器工具栏里的“移山”图标：绿色 `✓` 表示成功，橙色 `!` 表示已保存但有图片/标签失败，红色 `!` 表示保存失败。
 
 ## 常见问题
 
@@ -184,7 +191,11 @@ bash ./scripts/install-native-host-macos.sh --extension-id "<扩展ID>" --snapsh
 
 ### 图片保存失败会丢掉这条记录吗？
 
-不会。Host 会继续写入 Markdown，并在条目里记录 `图片下载失败：...`。常见原因包括 `图片下载超时`、`图片体积超过 20MB`、`响应不是图片内容`、`HTTP xxx` 或 `Invalid data URL`。
+不会。Host 会继续写入 Markdown，并在条目里记录 `图片下载失败：...`；页面剪藏里的图片本地化失败也会在 Popup/通知里提示失败张数。常见原因包括 `图片下载超时`、`图片体积超过 20MB`、`响应不是图片内容`、`HTTP xxx` 或 `Invalid data URL`。
+
+### 保存成功但 macOS 没有弹通知怎么办？
+
+macOS 或 Chrome 可能会关闭、静默或延迟系统通知。移山会同时在扩展图标上显示短暂徽标：绿色 `✓` 是保存成功，橙色 `!` 是记录已保存但有图片本地化或部分标签失败，红色 `!` 是保存失败；打开 Popup 也能看到最近一次操作状态。
 
 ### 可以迁移仓库目录吗？
 
@@ -214,7 +225,7 @@ powershell -ExecutionPolicy Bypass -File scripts/diagnose.ps1 -ExtensionId "<扩
 bash ./scripts/diagnose-macos.sh "<扩展ID>"
 ```
 
-诊断脚本会检查 Node、项目版本、浏览器扩展 manifest、Native Messaging manifest、allowed_origins、Native Host launcher、config.json、vaultPath、Inbox、attachments 和测试写入权限，并给出 ✅/❌ 与下一步建议。macOS 诊断还会对 Native Host launcher 发送一次真实 `get-config` 握手，确认 5 秒内能返回 Native Messaging 帧；若 Popup 一直显示加载态、无法点击“完整设置”或快捷键入口，优先运行：
+诊断脚本会检查 Node、项目版本、浏览器扩展 manifest、Native Messaging manifest、allowed_origins、Native Host launcher、config.json、vaultPath、Inbox、attachments 和测试写入权限，并给出 ✅/❌ 与下一步建议。macOS 诊断还会对 Native Host launcher 发送一次真实 `get-config` 握手，按 Chrome 的长连接 Native Messaging 行为等待响应帧，而不是要求 Host 退出；若 Popup 一直显示加载态、无法点击“完整设置”或快捷键入口，优先运行：
 
 ```bash
 bash ./scripts/diagnose-macos.sh "<扩展ID>"

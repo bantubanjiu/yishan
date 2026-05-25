@@ -34,6 +34,9 @@ if [[ -z "$extension_id" ]]; then
   exit 1
 fi
 
+extension_id="${extension_id#<}"
+extension_id="${extension_id%>}"
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 repo_host_dir="$repo_root/src/host"
 node_path="$(command -v node)"

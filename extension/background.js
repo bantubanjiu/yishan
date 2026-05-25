@@ -40,10 +40,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   try {
     const config = await loadConfigForSelection();
     const capture = await buildCaptureMessage(info, tab, config, buildScreenshotCapture);
-    await saveCapture(capture);
-    notify("已保存到 Obsidian");
+    const response = await saveCapture(capture);
+    notify(formatSaveNotification(capture, response), notificationOptionsForResponse(response));
   } catch (error) {
-    notify(`保存失败：${error instanceof Error ? error.message : String(error)}`);
+    notify(`保存失败：${error instanceof Error ? error.message : String(error)}`, { isError: true });
   }
 });
 
@@ -99,13 +99,20 @@ async function handleRuntimeMessage(message, sender) {
     const tab = await getActiveTab();
     const capture = await buildPageClip(tab);
     const response = await saveCapture(capture);
-    return { ok: true, response };
+    const imageFailures = summarizePageImageFailures(response);
+    return { ok: true, response, imageFailures, imageFailureCount: imageFailures.length };
   }
 
   if (message.type === "capture-screenshot") {
     const tab = await getActiveTab();
-    const response = await captureAndSaveScreenshot(tab, saveCapture);
-    return { ok: true, response };
+    try {
+      const response = await captureAndSaveScreenshot(tab, saveCapture);
+      notify(formatSaveNotification({ type: "image" }, response), notificationOptionsForResponse(response));
+      return { ok: true, response };
+    } catch (error) {
+      notify(`截图保存失败：${error instanceof Error ? error.message : String(error)}`, { isError: true });
+      throw error;
+    }
   }
 
   if (message.type === "capture-viewport-screenshot") {
@@ -141,7 +148,7 @@ async function handleRuntimeMessage(message, sender) {
       codeLanguage: typeof message.codeLanguage === "string" ? message.codeLanguage || undefined : selection.codeLanguage || undefined,
       capturedAt: new Date().toISOString()
     });
-    notify("已保存选中文本到 Obsidian");
+    notify("已保存选中文本到 Obsidian", notificationOptionsForResponse(response));
     return { ok: true, response };
   }
 
@@ -157,3 +164,22 @@ async function loadConfigForSelection() {
   }
 }
 
+
+function formatSaveNotification(capture, response) {
+  const failures = summarizePageImageFailures(response);
+  if (failures.length === 0) {
+    return "已保存到 Obsidian";
+  }
+  if (capture?.type === "image") {
+    return `已保存记录，但图片下载失败：${failures[0]}`;
+  }
+  return `已保存到 Obsidian，但 ${failures.length} 张图片本地化失败`;
+}
+
+function summarizePageImageFailures(response) {
+  return Array.isArray(response?.imageFailures) ? response.imageFailures.filter((failure) => typeof failure === "string") : [];
+}
+
+function notificationOptionsForResponse(response) {
+  return { isWarning: summarizePageImageFailures(response).length > 0 };
+}

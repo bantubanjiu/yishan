@@ -39,15 +39,47 @@ export function normalizeSelectionModifier(value) {
   return ["Alt", "Ctrl", "Shift", "Meta"].includes(value) ? value : "Alt";
 }
 
-export function notify(message) {
-  chrome.notifications.create({
+const ACTION_FEEDBACK_CLEAR_DELAY_MS = 3_500;
+let actionFeedbackGeneration = 0;
+
+export function notify(message, options = {}) {
+  const isError = options.isError === true;
+  const isWarning = options.isWarning === true;
+  showActionFeedback(message, { isError, isWarning });
+  chrome.notifications?.create({
     type: "basic",
     iconUrl: chrome.runtime.getURL("icons/icon128.png"),
-    title: "移山",
+    title: isError ? "移山保存失败" : "移山",
     message
   }, () => {
     if (chrome.runtime.lastError) {
       console.warn("Notification failed:", chrome.runtime.lastError.message);
     }
   });
+}
+
+function showActionFeedback(message, { isError = false, isWarning = false } = {}) {
+  if (!chrome.action) {
+    return;
+  }
+
+  const feedback = isError
+    ? { text: "!", color: "#dc2626", titlePrefix: "移山保存失败" }
+    : isWarning
+      ? { text: "!", color: "#f59e0b", titlePrefix: "移山保存有警告" }
+      : { text: "✓", color: "#16a34a", titlePrefix: "移山保存成功" };
+
+  chrome.action.setBadgeBackgroundColor?.({ color: feedback.color });
+  chrome.action.setBadgeText?.({ text: feedback.text });
+  chrome.action.setTitle?.({ title: `${feedback.titlePrefix}：${message}` });
+  if (chrome.action.setBadgeText) {
+    const generation = ++actionFeedbackGeneration;
+    setTimeout(() => {
+      if (generation !== actionFeedbackGeneration) {
+        return;
+      }
+      chrome.action.setBadgeText({ text: "" });
+      chrome.action.setTitle?.({ title: "移山" });
+    }, ACTION_FEEDBACK_CLEAR_DELAY_MS);
+  }
 }

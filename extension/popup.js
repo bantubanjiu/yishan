@@ -1,3 +1,5 @@
+import { notify } from "./utils.js";
+
 const HOST_NAME = "com.local.obsidian_web_clipper";
 const DEFAULT_CONFIG = {
   vaultPath: "",
@@ -44,7 +46,17 @@ await runAction("正在读取状态...", loadConfig, { quietSuccess: true });
 async function saveCurrentPage() {
   const response = await sendAction({ type: "save-current-page" });
   assertOk(response, "保存当前页面失败");
-  setStatus("已保存：当前页面 → Obsidian。");
+  setStatus(formatSaveCurrentPageStatus(response), false, { isWarning: hasImageFailures(response) });
+  return response;
+}
+
+
+function formatSaveCurrentPageStatus(response) {
+  const failures = Array.isArray(response?.imageFailures) ? response.imageFailures : [];
+  if (failures.length > 0) {
+    return `页面已保存，但 ${failures.length} 张图片本地化失败。`;
+  }
+  return "已保存：当前页面 → Obsidian。";
 }
 
 async function saveCurrentWindow() {
@@ -54,11 +66,13 @@ async function saveCurrentWindow() {
     const failed = Number(response.failed || 0);
     setStatus(
       failed > 0 ? `已保存 ${response.saved}/${response.attempted} 个标签，失败 ${failed} 个。` : `已保存：当前窗口 ${response.saved} 个标签。`,
-      failed > 0
+      false,
+      { isWarning: failed > 0 }
     );
-    return;
+    return response;
   }
   setStatus("已保存：当前窗口标签。");
+  return response;
 }
 
 async function captureScreenshot() {
@@ -71,7 +85,8 @@ async function captureScreenshot() {
 async function captureViewport() {
   const response = await sendAction({ type: "capture-viewport-screenshot" });
   assertOk(response, "当前视口截图失败");
-  setStatus("已保存：当前视口截图 → Obsidian。");
+  setStatus("已保存：当前视口截图 → Obsidian。", false, { isWarning: hasImageFailures(response?.response) });
+  return response?.response || response;
 }
 
 async function loadConfig() {
@@ -252,30 +267,19 @@ async function runSaveAction(loadingMessage, action) {
 }
 
 function notifySaveResult(message, isError = false) {
-  chrome.notifications?.create(
-    {
-      type: "basic",
-      iconUrl: chrome.runtime.getURL("icons/icon128.png"),
-      title: isError ? "移山保存失败" : "移山",
-      message
-    },
-    () => {
-      if (chrome.runtime.lastError) {
-        console.warn("Notification failed:", chrome.runtime.lastError.message);
-      }
-    }
-  );
+  const isWarning = !isError && statusEl.classList.contains("warning");
+  notify(message, { isError, isWarning });
 }
 
 async function runAction(loadingMessage, action, options = {}) {
   setStatus(loadingMessage);
   setBusy(true, { allowEntrances: true });
   try {
-    await action();
+    const result = await action();
     if (options.quietSuccess) {
       setStatus("准备就绪。");
     } else if (options.notify) {
-      notifySaveResult(statusEl.textContent || "已保存到 Obsidian。");
+      notifySaveResult(statusEl.textContent || "已保存到 Obsidian。", statusEl.classList.contains("error"));
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -310,10 +314,17 @@ function setBusy(isBusy, options = {}) {
   }
 }
 
-function setStatus(message, isError = false) {
+function hasImageFailures(response) {
+  return Array.isArray(response?.imageFailures) && response.imageFailures.length > 0;
+}
+
+function setStatus(message, isError = false, options = {}) {
   statusEl.textContent = message;
   statusEl.className = "status-bar"; // Reset classes
   if (isError) {
     statusEl.classList.add("error");
+  }
+  if (!isError && (options.isWarning === true || /失败|本地化失败|但/.test(message))) {
+    statusEl.classList.add("warning");
   }
 }

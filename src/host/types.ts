@@ -53,6 +53,7 @@ export type HostResponse =
       notePath: string;
       attachmentName?: string;
       attachments?: string[];
+      imageFailures?: string[];
     }
   | {
       ok: true;

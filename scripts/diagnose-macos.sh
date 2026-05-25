@@ -2,6 +2,8 @@
 set -euo pipefail
 
 extension_id="${1:-}"
+extension_id="${extension_id#<}"
+extension_id="${extension_id%>}"
 failed=0
 
 pass() {
@@ -36,7 +38,7 @@ check_native_handshake() {
   local output
   if output="$(
     node - "$launcher_path" <<'NODE'
-const { spawnSync } = require("node:child_process");
+const { spawn } = require("node:child_process");
 
 function encodeNativeMessage(message) {
   const payload = Buffer.from(JSON.stringify(message), "utf8");
@@ -46,36 +48,78 @@ function encodeNativeMessage(message) {
 }
 
 const launcher = process.argv[2];
-const result = spawnSync(launcher, {
-  input: encodeNativeMessage({ type: "get-config" }),
-  maxBuffer: 1024 * 1024,
-  timeout: 5_000
+const child = spawn(launcher, {
+  stdio: ["pipe", "pipe", "pipe"]
+});
+let stdout = Buffer.alloc(0);
+let stderr = "";
+let finished = false;
+
+const timeout = setTimeout(() => {
+  if (finished) return;
+  finished = true;
+  child.kill();
+  console.error(`Timed out waiting for native response frame. stderr=${stderr.trim()}`);
+  process.exit(1);
+}, 5_000);
+
+function finishWithResponse(response) {
+  if (finished) return;
+  finished = true;
+  clearTimeout(timeout);
+  child.kill();
+  if (!response || response.ok !== true || !response.config) {
+    console.error(JSON.stringify(response));
+    process.exit(1);
+  }
+  console.log(JSON.stringify(response.config));
+}
+
+child.on("error", (error) => {
+  if (finished) return;
+  finished = true;
+  clearTimeout(timeout);
+  console.error(error.message);
+  process.exit(1);
 });
 
-if (result.error) {
-  console.error(result.error.message);
-  process.exit(1);
-}
+child.stderr.on("data", (chunk) => {
+  stderr += chunk.toString("utf8");
+});
 
-const stdout = result.stdout || Buffer.alloc(0);
-if (stdout.length < 4) {
-  console.error(`No native response frame. stderr=${(result.stderr || "").toString("utf8").trim()}`);
-  process.exit(1);
-}
+child.stdout.on("data", (chunk) => {
+  stdout = Buffer.concat([stdout, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
+  if (stdout.length < 4) return;
+  const length = stdout.readUInt32LE(0);
+  if (stdout.length < 4 + length) return;
+  try {
+    finishWithResponse(JSON.parse(stdout.subarray(4, 4 + length).toString("utf8")));
+  } catch (error) {
+    if (finished) return;
+    finished = true;
+    clearTimeout(timeout);
+    child.kill();
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+});
 
-const length = stdout.readUInt32LE(0);
-if (stdout.length < 4 + length) {
-  console.error("Incomplete native response frame");
-  process.exit(1);
-}
+child.on("close", () => {
+  if (finished) return;
+  finished = true;
+  clearTimeout(timeout);
+  if (stdout.length < 4) {
+    console.error(`No native response frame. stderr=${stderr.trim()}`);
+    process.exit(1);
+  }
+  const length = stdout.readUInt32LE(0);
+  if (stdout.length < 4 + length) {
+    console.error("Incomplete native response frame");
+    process.exit(1);
+  }
+});
 
-const response = JSON.parse(stdout.subarray(4, 4 + length).toString("utf8"));
-if (!response || response.ok !== true || !response.config) {
-  console.error(JSON.stringify(response));
-  process.exit(1);
-}
-
-console.log(JSON.stringify(response.config));
+child.stdin.write(encodeNativeMessage({ type: "get-config" }));
 NODE
   )"; then
     pass "$label Native Messaging handshake" "$output"
@@ -139,10 +183,16 @@ check_native_manifest() {
 
   local origins
   origins="$(json_get "$manifest_path" allowed_origins || true)"
+  local expected_origin
+  expected_origin=""
+  if [[ -n "$extension_id" ]]; then
+    expected_origin="chrome-extension://${extension_id}/"
+  fi
+
   if [[ -z "$origins" ]]; then
     fail "$label allowed_origins" "manifest 缺少 allowed_origins。" "重跑 scripts/install-native-host-macos.sh。"
-  elif [[ -n "$extension_id" && "$origins" != *"$extension_id"* ]]; then
-    fail "$label allowed_origins" "当前 allowed_origins=$origins，未匹配传入 ExtensionId=$extension_id。" "用正确扩展 ID 重跑安装脚本。"
+  elif [[ -n "$expected_origin" && ",$origins," != *",$expected_origin,"* ]]; then
+    fail "$label allowed_origins" "当前 allowed_origins=$origins，未精确匹配 $expected_origin。" "用正确扩展 ID 重跑安装脚本。"
   else
     pass "$label allowed_origins" "$origins"
   fi
