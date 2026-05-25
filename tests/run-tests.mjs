@@ -1648,7 +1648,7 @@ test("diagnostic scripts cover Windows and macOS install chains", async () => {
   assert.doesNotMatch(macScript, /\btimeout 5\b/);
 });
 
-test("project metadata, CI, README, and changelog describe v0.2.5 capture formatting release", async () => {
+test("project metadata, CI, README, and changelog describe the current macOS resilience release", async () => {
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   const manifest = JSON.parse(await readFile(new URL("../extension/manifest.json", import.meta.url), "utf8"));
   const license = await readFile(new URL("../LICENSE", import.meta.url), "utf8");
@@ -1657,8 +1657,8 @@ test("project metadata, CI, README, and changelog describe v0.2.5 capture format
   const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
   const changelog = await readFile(new URL("../版本记录README.md", import.meta.url), "utf8");
 
-  assert.equal(packageJson.version, "0.2.5");
-  assert.equal(manifest.version, "0.2.5");
+  assert.equal(packageJson.version, "0.2.6");
+  assert.equal(manifest.version, "0.2.6");
   assert.equal(manifest.background.type, "module");
   assert.match(license, /MIT License/);
   assert.match(ci, /windows-latest/);
@@ -1670,8 +1670,12 @@ test("project metadata, CI, README, and changelog describe v0.2.5 capture format
   assert.match(packageJson.scripts["release:zip"], /build-release/);
   assert.match(packageJson.scripts.check, /gesture-content-script\.js/);
   assert.match(gitignore, /^dist\/$/m);
-  assert.match(readme, /最新更新：v0\.2\.5/);
-  assert.match(readme, /0\.2\.5/);
+  assert.match(readme, /version-0\.2\.6/);
+  assert.match(readme, /最新更新：v0\.2\.6/);
+  assert.match(readme, /当前版本：`0\.2\.6`/);
+  assert.match(readme, /Popup 一直显示加载态/);
+  assert.match(readme, /Native Messaging 帧/);
+  assert.match(readme, /native-host\.log/);
   assert.match(readme, /保存页面剪藏/);
   assert.match(readme, /Ctrl\+Shift\+S/);
   assert.match(readme, /Ctrl\+Shift\+X/);
@@ -1689,6 +1693,10 @@ test("project metadata, CI, README, and changelog describe v0.2.5 capture format
   assert.match(readme, /打开今天 Inbox/);
   assert.match(readme, /富 Markdown/);
   assert.match(readme, /release zip/);
+  assert.match(changelog, /`v0\.2\.6` 是当前代码中可见的正式版本号/);
+  assert.match(changelog, /## v0\.2\.6 - 2026-05-25/);
+  assert.match(changelog, /macOS Native Host 未响应/);
+  assert.match(changelog, /package\.json` 与 `extension\/manifest\.json` 版本同步为 `0\.2\.6`/);
   assert.match(changelog, /## v0\.2\.5 - 2026-05-07/);
   assert.match(changelog, /页面剪藏/);
   assert.match(changelog, /Ctrl\+Shift\+S/);

@@ -7,7 +7,7 @@
 
 Windows/macOS + Chrome/Edge 本地网页采集器：把页面剪藏、选中文本、图片、框选截图和当前窗口多标签保存到 Obsidian；页面剪藏生成单独 Markdown 文档，其他轻量采集写入当天 Inbox，并按同一天同一网址聚合。
 
-[![Version](https://img.shields.io/badge/version-0.2.5-2563eb)](./版本记录README.md)
+[![Version](https://img.shields.io/badge/version-0.2.6-2563eb)](./版本记录README.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%2F%20macOS-0078d4)](#系统要求)
 [![Browser](https://img.shields.io/badge/browser-Chrome%20%2F%20Edge-22c55e)](#快速安装)
 [![Runtime](https://img.shields.io/badge/runtime-Node.js%20%3E%3D%2024-339933)](./package.json)
@@ -39,14 +39,13 @@ Windows/macOS + Chrome/Edge 本地网页采集器：把页面剪藏、选中文�
 
 同一天同一网址只保留一个网页链接；不同时间保存的文字、富文本、图片和截图都追加在该链接下面。时间和日记文件名按本机本地时间计算。
 
-## 最新更新：v0.2.5
+## 最新更新：v0.2.6
 
-- 保存页面改为页面剪藏：提取正文 Markdown、尽量本地化页面图片，并生成单独 Markdown 文档，不再写入当天 Inbox 日记。
-- 除保存页面外，链接、文字、富 Markdown、图片和截图改为按“同一天 + 同一网址”聚合：当天 Inbox 内只保留一个网页链接，所有材料按保存时间追加到该链接下面。
-- 选中文本继续保留自动语言识别和安全 fenced code block；富 Markdown 摘录会以“富文本摘录”时间标题写入。
-- 图片/截图在对应网页分组下只写 Obsidian 附件嵌入或失败原因，不再额外记录原始图片来源 URL。
-- 继续保留本机本地时间、并发写入文件锁、图片安全校验和失败不阻断写入。
-- 快捷键默认改为 `Ctrl+Shift+S` / `Ctrl+Shift+X`，Popup/设置页会显示是否未绑定或被占用；启用拖选后普通网页会在 Chrome 重启后自动同步，不再依赖先打开 Popup。为实现重启后自动同步，扩展会声明普通 `http/https` 页面访问权限。
+- 修复 macOS 安装链路异常时 Popup 一直显示加载态的问题：Native Host 请求增加超时，完整设置、快捷键和刷新入口不会再被加载态锁死。
+- 首次安装还没有 `config.json` 时，Host 的 `get-config` 会返回安全默认配置，用户可以直接进入完整设置选择 Vault；保存和采集仍要求有效 Vault 路径。
+- macOS 安装脚本会把 Native Host stderr 写入 `~/Library/Application Support/ObsidianWebClipperLocal/native-host.log`，便于定位 Node、权限或路径问题。
+- `scripts/diagnose-macos.sh "<扩展ID>"` 现在会发送真实 Native Messaging 帧做 `get-config` 握手，检查 launcher 是否能在 5 秒内响应。
+- 保留 v0.2.5 的页面剪藏、同日同 URL 聚合、图片/截图附件嵌入和快捷键状态显示能力。
 
 ## 功能清单
 
@@ -306,7 +305,7 @@ npm run release:zip
 
 ## Changelog
 
-- 当前版本：`0.2.5`
+- 当前版本：`0.2.6`
 - 详细更新历史见 [`版本记录README.md`](./版本记录README.md)。
 
 ## License
